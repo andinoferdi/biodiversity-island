@@ -3,40 +3,39 @@
 import { useRef } from "react";
 import { useFrame, type ThreeEvent } from "@react-three/fiber";
 import type { Group } from "three";
+import type { AnimalSpawn, Species } from "./species";
 
 export interface AnimalPosition {
   x: number;
   z: number;
 }
 
-interface PlaceholderAnimalProps {
+interface AnimalProps {
+  spawn: AnimalSpawn;
+  species: Species;
   groundY: number;
   walkRadius: number;
   selected: boolean;
-  onSelect: () => void;
+  onSelect: (id: string) => void;
   positionRef: React.RefObject<AnimalPosition>;
 }
 
-const MOVE_SPEED = 1.2;
-const TURN_SPEED = 2.2;
-
-const BODY_COLOR = "#c47a3d";
-const BODY_COLOR_SELECTED = "#e09454";
-
-export default function PlaceholderAnimal({
+export default function Animal({
+  spawn,
+  species,
   groundY,
   walkRadius,
   selected,
   onSelect,
   positionRef,
-}: PlaceholderAnimalProps) {
+}: AnimalProps) {
   const groupRef = useRef<Group>(null);
   // Per-frame movement state lives in a ref so animation never triggers React renders.
   const motion = useRef({
-    x: 2,
-    z: 0,
-    heading: 0,
-    headingTarget: 0,
+    x: spawn.x,
+    z: spawn.z,
+    heading: spawn.heading,
+    headingTarget: spawn.heading,
     wanderTimer: 0,
   });
 
@@ -63,10 +62,10 @@ export default function PlaceholderAnimal({
       Math.sin(m.headingTarget - m.heading),
       Math.cos(m.headingTarget - m.heading)
     );
-    m.heading += diff * Math.min(1, TURN_SPEED * delta);
+    m.heading += diff * Math.min(1, species.turnSpeed * delta);
 
-    m.x += Math.sin(m.heading) * MOVE_SPEED * delta;
-    m.z += Math.cos(m.heading) * MOVE_SPEED * delta;
+    m.x += Math.sin(m.heading) * species.moveSpeed * delta;
+    m.z += Math.cos(m.heading) * species.moveSpeed * delta;
 
     // Hard clamp as a safety net so the animal can never leave the grass.
     const dist = Math.hypot(m.x, m.z);
@@ -78,13 +77,16 @@ export default function PlaceholderAnimal({
     group.position.set(m.x, groundY, m.z);
     group.rotation.y = m.heading;
 
-    positionRef.current.x = m.x;
-    positionRef.current.z = m.z;
+    // Only the selected animal feeds the UI panel, so skip the write otherwise.
+    if (selected) {
+      positionRef.current.x = m.x;
+      positionRef.current.z = m.z;
+    }
   });
 
   const handleClick = (event: ThreeEvent<MouseEvent>) => {
     event.stopPropagation();
-    onSelect();
+    onSelect(spawn.id);
   };
 
   const handlePointerOver = (event: ThreeEvent<PointerEvent>) => {
@@ -96,29 +98,25 @@ export default function PlaceholderAnimal({
     document.body.style.cursor = "";
   };
 
-  const bodyColor = selected ? BODY_COLOR_SELECTED : BODY_COLOR;
+  const emissive = selected ? species.accentColor : "#000000";
 
   return (
     <group
       ref={groupRef}
-      position={[2, groundY, 0]}
+      position={[spawn.x, groundY, spawn.z]}
+      rotation={[0, spawn.heading, 0]}
+      scale={species.scale}
       onClick={handleClick}
       onPointerOver={handlePointerOver}
       onPointerOut={handlePointerOut}
     >
       <mesh castShadow position={[0, 0.55, 0]}>
         <boxGeometry args={[0.6, 0.5, 1.1]} />
-        <meshStandardMaterial
-          color={bodyColor}
-          emissive={selected ? "#7a3d10" : "#000000"}
-        />
+        <meshStandardMaterial color={species.bodyColor} emissive={emissive} />
       </mesh>
       <mesh castShadow position={[0, 0.85, 0.65]}>
         <sphereGeometry args={[0.26, 16, 16]} />
-        <meshStandardMaterial
-          color={bodyColor}
-          emissive={selected ? "#7a3d10" : "#000000"}
-        />
+        <meshStandardMaterial color={species.bodyColor} emissive={emissive} />
       </mesh>
       {[
         [-0.2, 0.45],
@@ -128,12 +126,12 @@ export default function PlaceholderAnimal({
       ].map(([lx, lz]) => (
         <mesh key={`${lx},${lz}`} castShadow position={[lx, 0.15, lz]}>
           <boxGeometry args={[0.14, 0.3, 0.14]} />
-          <meshStandardMaterial color="#9c5f2e" />
+          <meshStandardMaterial color={species.accentColor} />
         </mesh>
       ))}
       <mesh castShadow position={[0, 0.6, -0.65]} rotation={[0.6, 0, 0]}>
         <boxGeometry args={[0.1, 0.1, 0.35]} />
-        <meshStandardMaterial color="#9c5f2e" />
+        <meshStandardMaterial color={species.accentColor} />
       </mesh>
       {selected && (
         <mesh position={[0, 0.03, 0]} rotation={[-Math.PI / 2, 0, 0]}>

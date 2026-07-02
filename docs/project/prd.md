@@ -9,21 +9,26 @@ Dokumen ini adalah living PRD. Gunakan status berikut agar rencana tidak tercamp
 - `Planned`: disetujui untuk milestone berikutnya
 - `Deferred`: sengaja ditunda
 
-Current baseline yang terverifikasi adalah project Next.js 16.2.10 dengan App Router, React 19, TypeScript, Tailwind CSS v4, ESLint, React Compiler, folder `src/`, npm, dan repository Git dengan remote origin. Dependency 3D (`three`, `@react-three/fiber`, `@react-three/drei`, `@types/three`) sudah terpasang. Day 1 Prototype sudah `Implemented` di `src/components/prototype/` (lihat `docs/feature/prototype/prototype.md`). Asset GLB dan simulation system belum ada — periksa repository sebelum mengubah status fitur lain menjadi `Implemented`.
+Current baseline yang terverifikasi adalah project Next.js 16.2.10 dengan App Router, React 19, TypeScript, Tailwind CSS v4, ESLint, React Compiler, folder `src/`, npm, dan repository Git dengan remote origin. Dependency 3D (`three`, `@react-three/fiber`, `@react-three/drei`, `@types/three`) sudah terpasang. Fase Hari 1–2 (prototype) sudah `Implemented` di `src/components/prototype/` (lihat `docs/feature/prototype/prototype.md`). Asset GLB dan simulation system belum ada — periksa repository sebelum mengubah status fitur lain menjadi `Implemented`.
+
+Project mengikuti roadmap bertahap Hari 1 sampai selesai (lihat bagian Priority dan Timeline). Jumlah hari adalah panduan, bukan target utama — pindah tahap hanya setelah fitur tahap sebelumnya stabil dan dapat diuji. Pembagian peran teknis: Next.js menangani struktur aplikasi, React Three Fiber menangani Canvas, interaksi, dan animasi per frame, GLTFLoader memuat aset GLB, dan InstancedMesh mengurangi draw call untuk vegetasi berulang.
 
 ## Core Features
 
 ### User Management
-- MVP tidak membutuhkan login, akun, profil, role, permission, atau penyimpanan data pengguna
+- MVP tidak membutuhkan login, akun, profil, role, permission, atau penyimpanan data pengguna di server
 - Pengalaman utama harus dapat dibuka langsung dari halaman utama tanpa onboarding panjang
-- Persistensi setting lokal dapat dipertimbangkan setelah simulasi inti stabil
+- `Planned` (Hari 10–12): save lokal state simulasi via localStorage, tanpa backend dan tanpa akun
 
 ### Main Feature
 - `Implemented`: Scene pulau 3D dengan laut, terrain, vegetasi, pencahayaan, dan kamera top-down yang dapat di-pan, zoom, serta dirotasi secara terbatas — `src/components/prototype/IslandScene.tsx`
-- `Implemented`: Satu hewan placeholder ("Island Grazer") yang bergerak otomatis, tetap berada di area pulau, dan dapat dipilih dengan pointer — `src/components/prototype/PlaceholderAnimal.tsx`
-- `Implemented`: Panel informasi hewan terpilih yang menampilkan nama, status, habitat, dan posisi, plus tombol Deselect — `src/components/prototype/BiodiversityPrototype.tsx`
-- `Planned`: Tahap MVP menambah beberapa spesies, kebutuhan dasar, sumber air atau makanan, kontrol waktu, dan hubungan sederhana antarspesies
-- `Planned`: Tahap lanjutan menambah perubahan habitat, kejadian seperti kekeringan atau kebakaran, metrik kesehatan ekosistem, serta konsekuensi dari tindakan pengguna
+- `Implemented`: Hewan berbasis data yang bergerak otomatis, tetap berada di area pulau, dan dapat dipilih dengan pointer — `src/components/prototype/Animal.tsx` (menggantikan `PlaceholderAnimal.tsx` dari Day 1)
+- `Implemented`: Panel informasi hewan terpilih yang menampilkan nama spesies, label individu, status, habitat, diet, dan posisi live, plus tombol Deselect — `src/components/prototype/BiodiversityPrototype.tsx`
+- `Implemented` (Hari 3–5, langkah awal): species roster — 3 spesies placeholder berbasis data (`src/components/prototype/species.ts`), 8 individu berkeliaran bersamaan (`src/components/prototype/Animal.tsx`), seleksi per-id, panel data spesies, dan ringkasan populasi — lint & build lulus, diverifikasi di browser; lihat `docs/feature/species-roster/species-roster.md`
+- `Planned` (Hari 3–5, langkah berikutnya): waktu simulasi, lapar, haus, makanan, air, batas habitat, mati, dan reproduksi sederhana
+- `Planned` (Hari 6–9): tiga bioma, enam spesies dengan model GLB dan animasi, hubungan predator–mangsa, serta tiga krisis ekosistem
+- `Planned` (Hari 10–12): UI utama, tutorial, statistik populasi, save lokal, balancing, audio, dan responsivitas
+- `Planned` (Hari 13–selesai): optimasi GLB, instancing tanaman, pengujian, perbaikan bug, dokumentasi, dan deployment
 - Semua model, texture, audio, dan data spesies harus memiliki sumber serta lisensi yang dapat dilacak
 
 ### Organization
@@ -41,7 +46,9 @@ Current baseline yang terverifikasi adalah project Next.js 16.2.10 dengan App Ro
 - Komponen Canvas, pointer interaction, animation loop, dan browser API harus berada dalam Client Component
 - Gunakan primitive geometry untuk prototype sebelum memasukkan model GLB final
 - Gunakan `useFrame` dan `delta` untuk gerakan berbasis waktu, serta `useRef` untuk state per-frame yang tidak perlu memicu render React
-- Gunakan format GLB untuk model runtime setelah asset pipeline lolos uji satu model, rig, animasi, export, loading, dan disposal
+- Gunakan format GLB untuk model runtime setelah asset pipeline lolos uji satu model, rig, animasi, export, loading, dan disposal; muat GLB dengan GLTFLoader (melalui helper drei seperti `useGLTF`) mulai fase Hari 6–9
+- Gunakan InstancedMesh untuk vegetasi dan objek berulang pada fase optimasi (Hari 13–selesai) agar draw call tetap rendah
+- Save lokal (Hari 10–12) memakai localStorage tanpa backend
 - Jangan menambah physics engine, post-processing, backend, auth, atau state library sebelum ada kebutuhan yang terbukti
 
 ### Backend
@@ -64,23 +71,28 @@ Current baseline yang terverifikasi adalah project Next.js 16.2.10 dengan App Ro
 - Production build berhasil, tidak ada error TypeScript, dan tidak ada request asset yang rusak
 - MVP menunjukkan minimal satu hubungan sebab-akibat ekosistem, bukan sekadar galeri model 3D
 - Versi polished memiliki performa dan responsivitas yang telah diuji pada perangkat target yang disepakati
+- Definisi selesai: ekosistem dapat berubah tanpa skrip linear, tetap stabil, dan nyaman dimainkan pada perangkat target
 
 ## Priority
-1. **Phase 1, Day 1 Prototype**: Setup scene, kamera top-down, pulau primitive, pencahayaan, vegetasi placeholder, satu hewan bergerak, seleksi, dan panel informasi
-2. **Phase 2, Vertical Slice**: Satu model GLB tervalidasi, animasi dasar, data spesies, kebutuhan makan atau minum, kontrol waktu, dan satu interaksi habitat
-3. **Phase 3, MVP Ecosystem**: Beberapa spesies, resource loop, reproduksi atau kematian sederhana, event ekosistem, indikator kesehatan, reset, dan tutorial ringkas
-4. **Phase 4, Polish**: Asset final, audio, loading state, visual feedback, accessibility, mobile controls, performance profiling, compression, dan browser testing
-5. **Phase 5, Release**: QA, content review, attribution asset, deployment, analytics yang disetujui, dokumentasi, dan backlog pascarilis
+Jumlah hari adalah panduan, bukan target utama. Pindah tahap hanya setelah fitur tahap sebelumnya stabil dan dapat diuji.
+
+1. **Hari 1–2, Prototype**: Pulau placeholder, kamera top-down, pencahayaan, vegetasi placeholder, hewan bergerak, seleksi, dan panel informasi
+2. **Hari 3–5, Simulasi Inti**: Species roster berbasis data (langkah awal), waktu simulasi, lapar, haus, makanan, air, batas habitat, mati, dan reproduksi sederhana
+3. **Hari 6–9, Bioma & Spesies**: Tiga bioma, enam spesies GLB dengan animasi, hubungan predator–mangsa, serta tiga krisis ekosistem
+4. **Hari 10–12, Pengalaman Utama**: UI utama, tutorial, statistik populasi, save lokal, balancing, audio, dan responsivitas
+5. **Hari 13–selesai, Optimasi & Release**: Optimasi GLB, instancing tanaman, pengujian, perbaikan bug, dokumentasi, dan deployment
 
 ## Timeline
-Target milestone harus ditentukan berdasarkan hasil setiap fase, bukan tanggal kosmetik.
+Target milestone harus ditentukan berdasarkan hasil setiap tahap, bukan tanggal kosmetik. Status hanya boleh berubah dengan bukti dari source code.
 
 | Milestone | Output wajib | Status awal |
 | --- | --- | --- |
-| Day 1 Prototype | Scene interaktif, kamera, pulau placeholder, satu hewan, seleksi, lint dan build | Implemented — lint & build lulus, diverifikasi di browser; lihat `docs/feature/prototype/prototype.md` |
-| Vertical Slice | Satu spesies dengan model dan animasi, data, kebutuhan dasar, UI minimum | Planned |
-| MVP Ecosystem | Beberapa spesies dan satu loop ekosistem yang dapat berubah | Planned |
-| Polish | Asset, audio, UX, performance, responsive, accessibility | Planned |
-| Release Candidate | QA, attribution, deployment, known issues, documentation | Planned |
+| Hari 1–2 Prototype | Scene interaktif, kamera, pulau placeholder, satu hewan, seleksi, lint dan build | Implemented — lint & build lulus, diverifikasi di browser; lihat `docs/feature/prototype/prototype.md` |
+| Hari 3–5 Simulasi Inti | Species roster, waktu simulasi, lapar, haus, makanan, air, batas habitat, mati, reproduksi sederhana | In Progress — species roster `Implemented` (lint & build lulus, diverifikasi di browser; lihat `docs/feature/species-roster/species-roster.md`); sisa fase masih `Planned` |
+| Hari 6–9 Bioma & Spesies | Tiga bioma, enam spesies GLB, animasi, predator–mangsa, tiga krisis | Planned |
+| Hari 10–12 Pengalaman Utama | UI utama, tutorial, statistik populasi, save lokal, balancing, audio, responsivitas | Planned |
+| Hari 13–selesai Optimasi & Release | Optimasi GLB, instancing tanaman, pengujian, perbaikan bug, dokumentasi, deployment | Planned |
+
+Project dinyatakan selesai saat ekosistem dapat berubah tanpa skrip linear, tetap stabil, dan nyaman dimainkan pada perangkat target.
 
 Setelah setiap milestone, update status fitur, known limitations, evidence path, dan langkah berikutnya di dokumen ini.

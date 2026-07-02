@@ -11,14 +11,28 @@ Baseline project yang sudah terverifikasi:
 - npm sebagai package manager
 - Repository Git dengan remote origin
 - Dependency 3D terpasang: `three`, `@react-three/fiber` v9, `@react-three/drei` v10, `@types/three`
-- Day 1 Prototype `Implemented` di `src/components/prototype/` — scene pulau, kamera top-down, vegetasi, satu hewan bergerak, seleksi, dan panel informasi; lint serta production build lulus (dokumentasi: `docs/feature/prototype/prototype.md`)
+- Fase Hari 1–2 (prototype) `Implemented` di `src/components/prototype/` — scene pulau, kamera top-down, vegetasi, satu hewan bergerak, seleksi, dan panel informasi; lint serta production build lulus (dokumentasi: `docs/feature/prototype/prototype.md`)
+- Branch `develop` sudah ada sebagai basis integrasi
+- Langkah awal fase Hari 3–5 (species roster) `Implemented` di branch `andino/feat/species-roster` — 3 spesies berbasis data (`src/components/prototype/species.ts`), 8 individu (`src/components/prototype/Animal.tsx`), seleksi per-id, panel data spesies; lint serta production build lulus (dokumentasi: `docs/feature/species-roster/species-roster.md`)
 
-Fitur di luar Day 1 Prototype (asset GLB, simulation system, kontrol waktu) belum ada. Dependency dan fitur harus selalu diverifikasi dari `package.json` dan source code sebelum dianggap sudah terpasang atau selesai.
+Sisa fase Hari 3–5 (waktu simulasi, lapar, haus, makanan, air, mati, reproduksi) serta fitur fase berikutnya (asset GLB, bioma, krisis, save lokal) belum ada di source code. Dependency dan fitur harus selalu diverifikasi dari `package.json` dan source code sebelum dianggap sudah terpasang atau selesai.
+
+## Roadmap & Milestones
+
+Jumlah hari adalah panduan, bukan target utama. Pindah tahap hanya setelah fitur tahap sebelumnya stabil dan dapat diuji. Pembagian peran teknis: Next.js menangani struktur aplikasi, React Three Fiber menangani Canvas, interaksi, dan animasi per frame, GLTFLoader memuat aset GLB, dan InstancedMesh mengurangi draw call untuk vegetasi berulang.
+
+1. **Hari 1–2 — Prototype** (`Implemented`): pulau placeholder, kamera, cahaya, hewan bergerak, seleksi, dan panel informasi.
+2. **Hari 3–5 — Simulasi Inti** (`In Progress` — species roster `Implemented`, sisanya `Planned`): waktu simulasi, lapar, haus, makanan, air, batas habitat, mati, dan reproduksi sederhana.
+3. **Hari 6–9 — Bioma & Spesies** (`Planned`): tiga bioma, enam spesies GLB, animasi, predator–mangsa, serta tiga krisis.
+4. **Hari 10–12 — Pengalaman Utama** (`Planned`): UI utama, tutorial, statistik populasi, save lokal, balancing, audio, dan responsivitas.
+5. **Hari 13–selesai — Optimasi & Release** (`Planned`): optimasi GLB, instancing tanaman, pengujian, perbaikan bug, dokumentasi, dan deployment.
+
+Project selesai saat ekosistem dapat berubah tanpa skrip linear, tetap stabil, dan nyaman dimainkan pada perangkat target. Requirement pada Section 3 harus dipetakan ke salah satu tahap di atas.
 
 Designed to be:
 - Readable, developer-friendly, dan AI-interpretable untuk pengembangan Biodiversity Island
 - Cukup lengkap untuk project simulasi 3D nyata, tetapi tetap fleksibel untuk milestone kecil
-- Mudah diperbarui sesuai prototype, vertical slice, MVP, polishing, dan release
+- Mudah diperbarui sesuai tahap roadmap: Hari 1–2, Hari 3–5, Hari 6–9, Hari 10–12, dan Hari 13–selesai
 
 ## Highlights
 
@@ -52,9 +66,9 @@ Designed to be:
 1. Introduction: Purpose, scope, glossary, references, status implementasi, dan document conventions
 2. Product Overview: Context Biodiversity Island, user experience, constraints, assumptions, dan milestone
 3. Requirements:
-    - External Interfaces: UI overlay, pointer input, keyboard input, touch input, browser, WebGL, serta asset GLB bila sudah digunakan
-    - Functional Requirements: camera navigation, island scene, animal movement, object selection, species information, time control, habitat, events, dan reset simulation
-    - Quality of Service: frame rate, loading time, bundle size, reliability, usability, accessibility, responsive layout, memory disposal, dan error handling
+    - External Interfaces: UI overlay, pointer input, keyboard input, touch input, browser, WebGL, serta asset GLB (dimuat via GLTFLoader) bila sudah digunakan
+    - Functional Requirements: camera navigation, island scene, animal movement, object selection, species information, simulasi inti Hari 3–5 (waktu, lapar, haus, makanan, air, batas habitat, mati, reproduksi), bioma dan krisis Hari 6–9 (predator–mangsa, tiga krisis), pengalaman Hari 10–12 (tutorial, statistik populasi, save lokal), dan reset simulation
+    - Quality of Service: frame rate, loading time, bundle size, draw call (instancing vegetasi dengan InstancedMesh pada Hari 13–selesai), reliability, usability, accessibility, responsive layout, memory disposal, dan error handling
     - Content & Data: data spesies, sumber data, attribution, satuan, habitat, diet, behavior, dan validasi konten
     - Design & Implementation Constraints: Next.js 16, App Router, TypeScript, Tailwind, React Compiler, npm, browser rendering, asset budget, build, dan deployment
     - AI/Agent Workflow: aturan membaca dokumentasi, memeriksa source code, membatasi scope, menjalankan validasi, dan memperbarui status milestone

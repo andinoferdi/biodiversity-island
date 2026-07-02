@@ -13,7 +13,11 @@ Tujuan project ini adalah menghasilkan karya portfolio yang menunjukkan kemampua
 
 Current baseline yang terverifikasi adalah repository Next.js 16.2.10 dengan App Router, React 19, TypeScript, Tailwind CSS v4, ESLint, React Compiler, npm, folder `src/`, dan Git dengan remote origin. Dependency 3D sudah terpasang dan terverifikasi di `package.json`: `three`, `@react-three/fiber`, `@react-three/drei`, dan `@types/three`.
 
-Day 1 Prototype sudah **Implemented** dan tervalidasi (lint, production build, dan pengujian browser lulus): scene pulau 3D top-down, kamera orthographic dengan MapControls, vegetasi placeholder, satu hewan bergerak yang dapat dipilih, dan panel informasi. Bukti: `src/components/prototype/` dan dokumentasi di `docs/feature/prototype/prototype.md`. Simulation system (kebutuhan, waktu, sebab-akibat ekosistem) belum ada dan tidak boleh dianggap selesai tanpa bukti dari source code.
+Fase Hari 1–2 (prototype) sudah **Implemented** dan tervalidasi (lint, production build, dan pengujian browser lulus): scene pulau 3D top-down, kamera orthographic dengan MapControls, vegetasi placeholder, satu hewan bergerak yang dapat dipilih, dan panel informasi. Bukti: `src/components/prototype/` dan dokumentasi di `docs/feature/prototype/prototype.md`. Simulation system (kebutuhan, waktu, sebab-akibat ekosistem) belum ada dan tidak boleh dianggap selesai tanpa bukti dari source code.
+
+Project mengikuti roadmap lima tahap: Hari 1–2 prototype; Hari 3–5 simulasi inti (waktu, lapar, haus, makanan, air, batas habitat, mati, reproduksi sederhana); Hari 6–9 tiga bioma, enam spesies GLB, animasi, predator–mangsa, dan tiga krisis; Hari 10–12 UI utama, tutorial, statistik populasi, save lokal, balancing, audio, dan responsivitas; Hari 13–selesai optimasi GLB, instancing tanaman, pengujian, perbaikan bug, dokumentasi, dan deployment. Jumlah hari adalah panduan, bukan target — pindah tahap hanya setelah tahap sebelumnya stabil dan dapat diuji.
+
+Langkah awal Hari 3–5 (species roster) sudah **Implemented** dan tervalidasi (lint, production build, dan pengujian browser lulus): 3 spesies placeholder berbasis data, 8 individu berkeliaran bersamaan, seleksi per-individu, panel data spesies, dan ringkasan populasi. Bukti: `src/components/prototype/species.ts`, `src/components/prototype/Animal.tsx`, dan dokumentasi di `docs/feature/species-roster/species-roster.md`. Sisa fase Hari 3–5 (waktu simulasi, kebutuhan, sumber daya, mati, reproduksi) belum ada.
 
 ## Business Objectives
 
@@ -36,16 +40,18 @@ Day 1 Prototype sudah **Implemented** dan tervalidasi (lint, production build, d
 ## Scope
 
 ### In Scope
-- Satu pulau 3D dengan laut, terrain, vegetasi, pencahayaan, dan kamera top-down yang dapat dikendalikan.
-- Hewan yang bergerak, dapat dipilih, memiliki data ringkas, dan pada MVP bereaksi terhadap kebutuhan atau kondisi habitat.
+- Satu pulau 3D dengan laut, terrain, vegetasi, pencahayaan, dan kamera top-down yang dapat dikendalikan, berkembang menjadi tiga bioma pada fase Hari 6–9.
+- Hewan yang bergerak, dapat dipilih, memiliki data ringkas, dan mulai fase Hari 3–5 bereaksi terhadap kebutuhan (lapar, haus) serta kondisi habitat.
+- Sistem simulasi inti (Hari 3–5): waktu simulasi, lapar, haus, makanan, air, batas habitat, mati, dan reproduksi sederhana.
+- Enam spesies dengan model GLB dan animasi, hubungan predator–mangsa, serta tiga krisis ekosistem (Hari 6–9).
+- UI utama, tutorial, statistik populasi, save lokal via localStorage tanpa backend, balancing, audio, dan responsivitas (Hari 10–12).
 - UI overlay untuk instruksi, detail objek, kontrol waktu, status simulasi, serta indikator kesehatan ekosistem bila sudah masuk milestone.
-- Sistem ekosistem bertahap yang dapat mencakup makanan, air, habitat, predator dan mangsa, reproduksi, kematian, serta event lingkungan sederhana.
-- Pipeline asset GLB yang mencakup source, skala, origin, material, rig, animasi, export, compression, attribution, dan runtime validation.
-- Performance, responsive behavior, accessibility dasar, loading state, browser compatibility, documentation, dan deployment untuk release.
+- Pipeline asset GLB yang mencakup source, skala, origin, material, rig, animasi, export, compression, attribution, dan runtime validation; loading runtime memakai GLTFLoader.
+- Optimasi GLB, instancing vegetasi dengan InstancedMesh, performance, accessibility dasar, loading state, browser compatibility, pengujian, dokumentasi, dan deployment untuk release (Hari 13–selesai).
 
 ### Out of Scope
 - Open-world berskala besar, multiplayer, akun pengguna, marketplace, pembayaran, atau backend kompleks pada MVP.
-- Puluhan spesies, simulasi ilmiah presisi tinggi, genetics system, procedural world besar, atau AI hewan tingkat lanjut sebelum vertical slice stabil.
+- Puluhan spesies (di atas enam spesies roadmap), simulasi ilmiah presisi tinggi, genetics system, procedural world besar, atau AI hewan tingkat lanjut sebelum simulasi inti Hari 3–5 stabil.
 - Pembuatan semua model final sebelum satu model uji berhasil melewati pipeline Blender ke GLB dan berjalan baik di browser.
 - Native mobile app, VR, AR, atau desktop executable tanpa inisiatif terpisah.
 - Klaim ilmiah atau data konservasi yang tidak mempunyai sumber dan review yang jelas.
@@ -62,6 +68,9 @@ Day 1 Prototype sudah **Implemented** dan tervalidasi (lint, production build, d
 - FR-008: Sistem harus dapat memuat model GLB dan animasi setelah asset pipeline dinyatakan stabil.
 - FR-009: Sistem harus menyediakan reset atau pemulihan state simulasi agar pengguna dapat mengulang skenario.
 - FR-010: Dokumentasi harus membedakan fitur yang sudah diimplementasikan, sedang dikerjakan, direncanakan, dan ditunda.
+- FR-011: Sistem harus dapat menyimpan dan memulihkan state simulasi secara lokal (localStorage) tanpa backend pada fase Hari 10–12.
+- FR-012: Sistem harus menyediakan statistik populasi dan tutorial ringkas agar pengguna memahami kondisi ekosistem dan cara bermain.
+- FR-013: Sistem harus menyediakan tiga bioma dan tiga krisis ekosistem yang dapat diamati dampaknya pada fase Hari 6–9.
 
 ## Non-Functional Requirements
 
@@ -86,7 +95,9 @@ Day 1 Prototype sudah **Implemented** dan tervalidasi (lint, production build, d
 ## Success Criteria
 
 - Kriteria-001: Pengguna dapat memahami cara menjelajahi pulau dan memilih hewan tanpa tutorial panjang.
-- Kriteria-002: Prototype membuktikan scene, camera control, animal movement, selection, panel informasi, lint, dan build dapat berjalan bersama.
-- Kriteria-003: Vertical slice membuktikan satu model GLB, animasi, data spesies, kebutuhan dasar, dan feedback UI dapat berjalan tanpa arsitektur berlebihan.
-- Kriteria-004: MVP menunjukkan perubahan ekosistem yang dapat diamati dan dijelaskan melalui data atau visual.
-- Kriteria-005: Release candidate mempunyai asset attribution, browser check, responsive check, performance evidence, known issues, dan dokumentasi yang diperbarui.
+- Kriteria-002: Prototype (Hari 1–2) membuktikan scene, camera control, animal movement, selection, panel informasi, lint, dan build dapat berjalan bersama.
+- Kriteria-003: Simulasi inti (Hari 3–5) menunjukkan waktu simulasi, lapar, haus, makanan, air, batas habitat, mati, dan reproduksi sederhana yang dapat diamati tanpa skrip linear.
+- Kriteria-004: Fase Hari 6–9 menunjukkan tiga bioma, enam spesies GLB beranimasi, hubungan predator–mangsa, dan tiga krisis yang dampaknya dapat dijelaskan melalui data atau visual.
+- Kriteria-005: Fase Hari 10–12 menghadirkan UI utama, tutorial, statistik populasi, save lokal, balancing, audio, dan responsivitas yang nyaman digunakan.
+- Kriteria-006: Release (Hari 13–selesai) mempunyai optimasi GLB, instancing vegetasi, hasil pengujian, asset attribution, known issues, dokumentasi terbaru, dan deployment.
+- Kriteria-007: Project dinyatakan selesai saat ekosistem dapat berubah tanpa skrip linear, tetap stabil, dan nyaman dimainkan pada perangkat target.
