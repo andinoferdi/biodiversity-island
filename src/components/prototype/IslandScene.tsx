@@ -2,7 +2,8 @@
 
 import { Canvas } from "@react-three/fiber";
 import { MapControls } from "@react-three/drei";
-import PlaceholderAnimal, { type AnimalPosition } from "./PlaceholderAnimal";
+import Animal, { type AnimalPosition } from "./Animal";
+import { ANIMAL_SPAWNS, getSpecies } from "./species";
 
 const GROUND_Y = 0.9;
 const WALK_RADIUS = 5.2;
@@ -73,14 +74,14 @@ function Sea() {
 }
 
 interface IslandSceneProps {
-  selected: boolean;
-  onSelect: () => void;
+  selectedId: string | null;
+  onSelect: (id: string) => void;
   onDeselect: () => void;
   animalPositionRef: React.RefObject<AnimalPosition>;
 }
 
 export default function IslandScene({
-  selected,
+  selectedId,
   onSelect,
   onDeselect,
   animalPositionRef,
@@ -114,13 +115,18 @@ export default function IslandScene({
       {TREES.map((tree) => (
         <Tree key={`${tree.x},${tree.z}`} {...tree} />
       ))}
-      <PlaceholderAnimal
-        groundY={GROUND_Y}
-        walkRadius={WALK_RADIUS}
-        selected={selected}
-        onSelect={onSelect}
-        positionRef={animalPositionRef}
-      />
+      {ANIMAL_SPAWNS.map((spawn) => (
+        <Animal
+          key={spawn.id}
+          spawn={spawn}
+          species={getSpecies(spawn.speciesId)}
+          groundY={GROUND_Y}
+          walkRadius={WALK_RADIUS}
+          selected={spawn.id === selectedId}
+          onSelect={onSelect}
+          positionRef={animalPositionRef}
+        />
+      ))}
       <MapControls
         enableDamping
         dampingFactor={0.08}
