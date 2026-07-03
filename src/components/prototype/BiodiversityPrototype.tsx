@@ -11,6 +11,7 @@ import {
   type AnimalVitals,
   type TimeScale,
 } from "./simulation";
+import type { GraphicQuality } from "./IslandScene";
 
 const IslandScene = dynamic(() => import("./IslandScene"), {
   ssr: false,
@@ -43,6 +44,12 @@ const TIME_OPTIONS: { scale: TimeScale; label: string }[] = [
   { scale: 0, label: "Pause" },
   { scale: 1, label: "1×" },
   { scale: 4, label: "4×" },
+];
+
+const GRAPHIC_OPTIONS: { quality: GraphicQuality; label: string }[] = [
+  { quality: "low", label: "Low" },
+  { quality: "medium", label: "Med" },
+  { quality: "high", label: "High" },
 ];
 
 const INITIAL_VITALS: AnimalVitals = {
@@ -79,6 +86,7 @@ function NeedBar({ label, value }: { label: string; value: number }) {
 export default function BiodiversityPrototype() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [timeScale, setTimeScale] = useState<TimeScale>(1);
+  const [graphicQuality, setGraphicQuality] = useState<GraphicQuality>("high");
   const [vitals, setVitals] = useState<AnimalVitals>(INITIAL_VITALS);
   const [population, setPopulation] = useState<AnimalSpawn[]>(ANIMAL_SPAWNS);
   const vitalsRef = useRef<AnimalVitals>({ ...INITIAL_VITALS });
@@ -157,6 +165,7 @@ export default function BiodiversityPrototype() {
         onReproduce={handleReproduce}
         timeScale={timeScale}
         vitalsRef={vitalsRef}
+        graphicQuality={graphicQuality}
       />
 
       <div className="absolute left-4 top-4 max-w-xs rounded-lg bg-slate-950/70 p-4 text-slate-100 backdrop-blur-sm">
@@ -174,6 +183,23 @@ export default function BiodiversityPrototype() {
               onClick={() => setTimeScale(scale)}
               className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
                 timeScale === scale
+                  ? "bg-amber-400 text-slate-900"
+                  : "bg-slate-800 text-slate-300 hover:bg-slate-700"
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+        <div className="mt-2 flex gap-1" role="group" aria-label="Graphic quality">
+          {GRAPHIC_OPTIONS.map(({ quality, label }) => (
+            <button
+              key={quality}
+              type="button"
+              aria-pressed={graphicQuality === quality}
+              onClick={() => setGraphicQuality(quality)}
+              className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
+                graphicQuality === quality
                   ? "bg-amber-400 text-slate-900"
                   : "bg-slate-800 text-slate-300 hover:bg-slate-700"
               }`}

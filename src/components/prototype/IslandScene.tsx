@@ -1,8 +1,10 @@
 "use client";
 
-import { Suspense, useSyncExternalStore } from "react";
-import { Canvas } from "@react-three/fiber";
+import { Suspense, useSyncExternalStore, useRef } from "react";
+import { Canvas, useFrame } from "@react-three/fiber";
 import { MapControls, useProgress } from "@react-three/drei";
+import { EffectComposer, Bloom, BrightnessContrast } from "@react-three/postprocessing";
+import * as THREE from "three";
 import Animal from "./Animal";
 import { Log, Rock, TerrainGLB, Tree } from "./EnvironmentModels";
 import {
@@ -21,6 +23,52 @@ import {
 } from "./simulation";
 
 const VEGETATION_COMPONENTS = { tree: Tree, rock: Rock, log: Log } as const;
+
+function DynamicSun({ graphicQuality, timeScale }: { graphicQuality: GraphicQuality; timeScale: TimeScale }) {
+  const lightRef = useRef<THREE.DirectionalLight>(null);
+  const timeAccum = useRef(0);
+
+  useFrame((_state, delta) => {
+    if (!lightRef.current) return;
+    if (timeScale > 0) {
+      timeAccum.current += delta * timeScale * 0.06;
+    }
+
+    // Full circular orbit around the island at 30° elevation.
+    // height = radius × tan(30°) ≈ 0.577 × radius
+    const ORBIT_R = 15;
+    const SUN_HEIGHT = ORBIT_R * Math.tan(30 * Math.PI / 180); // ~8.7
+    const angle = timeAccum.current;
+    lightRef.current.position.set(
+      Math.sin(angle) * ORBIT_R,
+      TERRAIN_Y + SUN_HEIGHT,
+      Math.cos(angle) * ORBIT_R,
+    );
+
+    // Keep the shadow camera aimed at the island centre
+    lightRef.current.target.position.set(0, TERRAIN_Y, 0);
+    lightRef.current.target.updateMatrixWorld();
+  });
+
+  const mapSize = graphicQuality === "high" ? 2048 : 1024;
+
+  return (
+    <directionalLight
+      ref={lightRef}
+      castShadow={graphicQuality !== "low"}
+      position={[10, 16, 8]}
+      intensity={1.6}
+      shadow-mapSize={[mapSize, mapSize]}
+      shadow-camera-left={-20}
+      shadow-camera-right={20}
+      shadow-camera-top={20}
+      shadow-camera-bottom={-20}
+      shadow-camera-near={0.5}
+      shadow-camera-far={60}
+      shadow-bias={-0.001}
+    />
+  );
+}
 
 function Vegetation() {
   return (
@@ -97,6 +145,8 @@ function TerrainLoadingOverlay() {
   );
 }
 
+export type GraphicQuality = "low" | "medium" | "high";
+
 interface IslandSceneProps {
   population: AnimalSpawn[];
   selectedId: string | null;
@@ -111,6 +161,7 @@ interface IslandSceneProps {
   ) => void;
   timeScale: TimeScale;
   vitalsRef: React.RefObject<AnimalVitals>;
+  graphicQuality: GraphicQuality;
 }
 
 export default function IslandScene({
@@ -122,13 +173,14 @@ export default function IslandScene({
   onReproduce,
   timeScale,
   vitalsRef,
+  graphicQuality,
 }: IslandSceneProps) {
   return (
     <div className="relative h-full w-full">
       <Canvas
         orthographic
-        shadows="percentage"
-        camera={{ position: [12, 14, 12], zoom: 114, near: 0.01, far: 120 }}
+        shadows={graphicQuality !== "low" ? "percentage" : false}
+        camera={{ position: [-24, 0, 36], zoom: 80, near: 0.01, far: 120 }}
         onPointerMissed={onDeselect}
         fallback={
           <div className="flex h-full w-full items-center justify-center bg-slate-900 p-6 text-center text-slate-100">
@@ -137,17 +189,16 @@ export default function IslandScene({
           </div>
         }
       >
-        <hemisphereLight args={["#bfd9ff", "#3f5a36", 0.7]} />
-        <directionalLight
-          castShadow
-          position={[10, 16, 8]}
-          intensity={1.6}
-          shadow-mapSize={[1024, 1024]}
-          shadow-camera-left={-12}
-          shadow-camera-right={12}
-          shadow-camera-top={12}
-          shadow-camera-bottom={-12}
-        />
+        <hemisphereLight args={["#bfd9ff", "#3f5a36", graphicQuality === "low" ? 0.7 : 0.5]} />
+        {/* Secondary fill light simulates bounced global illumination */}
+        {graphicQuality !== "low" && (
+          <directionalLight
+            position={[-8, 6, -10]}
+            intensity={graphicQuality === "high" ? 0.6 : 0.4}
+            color="#a8c4e0"
+          />
+        )}
+        <DynamicSun graphicQuality={graphicQuality} timeScale={timeScale} />
         <Sea />
         {/* The terrain and vegetation GLBs suspend while streaming in; the
             HTML overlay below covers the wait, and the animals hold still
@@ -180,8 +231,22 @@ export default function IslandScene({
           maxPolarAngle={Math.PI / 2.4}
           target={[0, TERRAIN_Y, 0]}
         />
+        {graphicQuality !== "low" && (
+          <EffectComposer multisampling={graphicQuality === "high" ? 8 : 4}>
+            <Bloom
+              luminanceThreshold={0.8}
+              luminanceSmoothing={0.9}
+              intensity={graphicQuality === "high" ? 0.35 : 0.2}
+            />
+            <BrightnessContrast
+              brightness={0}
+              contrast={graphicQuality === "high" ? 0.1 : 0.05}
+            />
+          </EffectComposer>
+        )}
       </Canvas>
       <TerrainLoadingOverlay />
     </div>
   );
 }
+
