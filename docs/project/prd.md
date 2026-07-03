@@ -25,7 +25,8 @@ Project mengikuti roadmap bertahap Hari 1 sampai selesai (lihat bagian Priority 
 - `Implemented`: Hewan berbasis data yang bergerak otomatis, tetap berada di area pulau, dan dapat dipilih dengan pointer — `src/components/prototype/Animal.tsx` (menggantikan `PlaceholderAnimal.tsx` dari Day 1)
 - `Implemented`: Panel informasi hewan terpilih yang menampilkan nama spesies, label individu, status, habitat, diet, dan posisi live, plus tombol Deselect — `src/components/prototype/BiodiversityPrototype.tsx`
 - `Implemented` (Hari 3–5, langkah awal): species roster — 3 spesies placeholder berbasis data (`src/components/prototype/species.ts`), 8 individu berkeliaran bersamaan (`src/components/prototype/Animal.tsx`), seleksi per-id, panel data spesies, dan ringkasan populasi — lint & build lulus, diverifikasi di browser; lihat `docs/feature/species-roster/species-roster.md`
-- `Planned` (Hari 3–5, langkah berikutnya): waktu simulasi, lapar, haus, makanan, air, batas habitat, mati, dan reproduksi sederhana
+- `Implemented` (Hari 3–5, langkah kedua): simulation needs — waktu simulasi dengan kontrol Pause/1×/4×, kebutuhan lapar–haus per spesies (`src/components/prototype/species.ts`), sumber daya deterministik 1 kolam + 3 petak makanan (`src/components/prototype/simulation.ts`), perilaku berbasis kebutuhan cari→konsumsi→kembali berkeliaran (`src/components/prototype/Animal.tsx`), status live dan bar kebutuhan di panel — memenuhi FR-006 & FR-007; lint & build lulus, diverifikasi di browser; lihat `docs/feature/simulation-needs/simulation-needs.md`
+- `Planned` (Hari 3–5, langkah terakhir): mati ketika kebutuhan bertahan di maksimum terlalu lama dan reproduksi sederhana
 - `Planned` (Hari 6–9): tiga bioma, enam spesies dengan model GLB dan animasi, hubungan predator–mangsa, serta tiga krisis ekosistem
 - `Planned` (Hari 10–12): UI utama, tutorial, statistik populasi, save lokal, balancing, audio, dan responsivitas
 - `Planned` (Hari 13–selesai): optimasi GLB, instancing tanaman, pengujian, perbaikan bug, dokumentasi, dan deployment
@@ -88,7 +89,7 @@ Target milestone harus ditentukan berdasarkan hasil setiap tahap, bukan tanggal 
 | Milestone | Output wajib | Status awal |
 | --- | --- | --- |
 | Hari 1–2 Prototype | Scene interaktif, kamera, pulau placeholder, satu hewan, seleksi, lint dan build | Implemented — lint & build lulus, diverifikasi di browser; lihat `docs/feature/prototype/prototype.md` |
-| Hari 3–5 Simulasi Inti | Species roster, waktu simulasi, lapar, haus, makanan, air, batas habitat, mati, reproduksi sederhana | In Progress — species roster `Implemented` (lint & build lulus, diverifikasi di browser; lihat `docs/feature/species-roster/species-roster.md`); sisa fase masih `Planned` |
+| Hari 3–5 Simulasi Inti | Species roster, waktu simulasi, lapar, haus, makanan, air, batas habitat, mati, reproduksi sederhana | In Progress — species roster dan simulation needs `Implemented` (lint & build lulus, diverifikasi di browser; lihat `docs/feature/species-roster/species-roster.md` dan `docs/feature/simulation-needs/simulation-needs.md`); mati & reproduksi masih `Planned` |
 | Hari 6–9 Bioma & Spesies | Tiga bioma, enam spesies GLB, animasi, predator–mangsa, tiga krisis | Planned |
 | Hari 10–12 Pengalaman Utama | UI utama, tutorial, statistik populasi, save lokal, balancing, audio, responsivitas | Planned |
 | Hari 13–selesai Optimasi & Release | Optimasi GLB, instancing tanaman, pengujian, perbaikan bug, dokumentasi, deployment | Planned |
