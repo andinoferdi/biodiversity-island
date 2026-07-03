@@ -10,7 +10,7 @@ export interface Species {
   diet: string;
   // GLB model under public/, plus per-model corrections determined from the
   // GLB bounding boxes and verified in the browser: modelScale normalizes
-  // wildly different source sizes (turtle spans ~676 units, dove ~1.5),
+  // wildly different source sizes (rabbit spans ~676 units, dove ~1.5),
   // modelYOffset lifts models whose origin sits above their base, modelRotY
   // aligns the model's forward axis with the movement heading (+Z).
   modelUrl: string;
@@ -19,6 +19,12 @@ export interface Species {
   modelRotY: number;
   // Only the deer ships animation clips; the rest are static meshes.
   animated: boolean;
+  // Map of standard semantic actions to the GLB's specific clip names.
+  animations?: {
+    walk: string;
+    eat?: string;
+    idle?: string;
+  };
   // Radius of the yellow selection ring, sized to the model's footprint.
   selectionRadius: number;
   moveSpeed: number;
@@ -53,6 +59,7 @@ export const SPECIES: Species[] = [
     modelYOffset: 0,
     modelRotY: 0,
     animated: true,
+    animations: { walk: "Walk", eat: "Eating" },
     selectionRadius: 1.0,
     moveSpeed: 1.3,
     turnSpeed: 2.2,
@@ -89,6 +96,7 @@ export const SPECIES: Species[] = [
     modelYOffset: 0,
     modelRotY: 0,
     animated: true,
+    animations: { walk: "Walk", eat: "Eating" },
     selectionRadius: 1.8,
     moveSpeed: 0.7,
     turnSpeed: 1.4,
@@ -115,16 +123,17 @@ export const SPECIES: Species[] = [
     consumeRate: 22,
   },
   {
-    id: "turtle",
-    name: "Turtle",
+    id: "rabbit",
+    name: "Rabbit",
     habitat: "Sandy shore",
     biomeId: "shore",
     diet: "Sea grass",
-    modelUrl: "/assets/animal/turtle/turtle.glb",
-    modelScale: 0.0015,
-    modelYOffset: 0.11,
+    modelUrl: "/assets/animal/rabbit/rabbit.glb",
+    modelScale: 1.4,
+    modelYOffset: 0.2,
     modelRotY: 0,
-    animated: false,
+    animated: true,
+    animations: { walk: "Bunny|Bunny_walk", idle: "Bunny|Bunny_idle" },
     selectionRadius: 0.9,
     moveSpeed: 0.5,
     turnSpeed: 1.6,
@@ -173,8 +182,8 @@ export const ANIMAL_SPAWNS: AnimalSpawn[] = [
   { id: "horse-2", speciesId: "horse", label: "Horse #2", x: -2.4, z: -1.4, heading: 2.1 },
   { id: "duck-1", speciesId: "duck", label: "Duck #1", x: 1.2, z: 3.4, heading: 1.2 },
   { id: "duck-2", speciesId: "duck", label: "Duck #2", x: 2.9, z: 1.9, heading: 5.3 },
-  { id: "turtle-1", speciesId: "turtle", label: "Turtle #1", x: 0.4, z: 2.6, heading: 3.0 },
-  { id: "turtle-2", speciesId: "turtle", label: "Turtle #2", x: -0.8, z: 4.0, heading: 0.4 },
+  { id: "rabbit-1", speciesId: "rabbit", label: "Rabbit #1", x: 0.4, z: 2.6, heading: 3.0 },
+  { id: "rabbit-2", speciesId: "rabbit", label: "Rabbit #2", x: -0.8, z: 4.0, heading: 0.4 },
   { id: "fish-1", speciesId: "fish", label: "Fish #1", x: 1.8, z: 3.0, heading: 2.0 },
   { id: "fish-2", speciesId: "fish", label: "Fish #2", x: 0.6, z: 4.4, heading: 4.6 },
 ];
