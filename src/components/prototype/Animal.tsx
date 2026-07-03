@@ -157,10 +157,10 @@ export default function Animal({
       let moving = true;
       if (atWater && m.thirst > SATISFIED_LEVEL && m.status === "Drinking") {
         m.thirst = Math.max(0, m.thirst - species.consumeRate * dt);
-        moving = false;
+        if (!species.neverStops) moving = false;
       } else if (atFood && m.hunger > SATISFIED_LEVEL && m.status === "Eating") {
         m.hunger = Math.max(0, m.hunger - species.consumeRate * dt);
-        moving = false;
+        if (!species.neverStops) moving = false;
       } else if (m.thirst > SEEK_THRESHOLD) {
         if (atWater) {
           m.status = "Drinking";
@@ -194,6 +194,8 @@ export default function Animal({
       }
 
       if (moving) {
+        const effectiveRadius = species.roamRadius ?? walkRadius;
+
         // Soft habitat boundary: a roaming animal that wandered out of its
         // home biome steers toward the biome's center (same mechanism as the
         // shoreline steer — no hard wall, seek steering is untouched).
@@ -209,7 +211,7 @@ export default function Animal({
         // bouncing (resources all sit inside the walk radius, so this never
         // fights the seek steering for long).
         const distFromCenter = Math.hypot(m.x, m.z);
-        if (m.status === "Roaming" && distFromCenter > walkRadius * 0.85) {
+        if (m.status === "Roaming" && distFromCenter > effectiveRadius * 0.85) {
           m.headingTarget = Math.atan2(-m.x, -m.z);
         }
 
@@ -223,11 +225,11 @@ export default function Animal({
         m.x += Math.sin(m.heading) * species.moveSpeed * dt;
         m.z += Math.cos(m.heading) * species.moveSpeed * dt;
 
-        // Hard clamp as a safety net so the animal can never leave the grass.
+        // Hard clamp as a safety net so the animal can never leave the boundary.
         const dist = Math.hypot(m.x, m.z);
-        if (dist > walkRadius) {
-          m.x *= walkRadius / dist;
-          m.z *= walkRadius / dist;
+        if (dist > effectiveRadius) {
+          m.x *= effectiveRadius / dist;
+          m.z *= effectiveRadius / dist;
         }
       }
     }
