@@ -5,7 +5,9 @@ export type AnimalStatus =
   | "Seeking water"
   | "Drinking"
   | "Seeking food"
-  | "Eating";
+  | "Eating"
+  | "Starving"
+  | "Dehydrated";
 
 export interface ResourceSpot {
   id: string;
@@ -32,8 +34,25 @@ export const NEED_MAX = 100;
 export const SEEK_THRESHOLD = 55;
 // Consumption stops once the need drops to this level.
 export const SATISFIED_LEVEL = 10;
-// Only affects the bar color for now; death arrives in the next step.
+// Above this level the need bar turns red as a visual warning.
 export const CRITICAL_LEVEL = 90;
+
+// Animals can walk anywhere inside this radius; also bounds offspring spawns.
+export const WALK_RADIUS = 5.2;
+
+// Sim-seconds a need must sit at NEED_MAX before the animal dies.
+export const DEATH_AFTER_CRITICAL = 20;
+// Both needs must stay below this level to count as well-fed. Must sit above
+// SEEK_THRESHOLD: needs routinely climb to ~55 before an animal reacts, so a
+// lower value would reset the reproduction timer every cycle and no animal
+// could ever reproduce.
+export const WELL_FED_LEVEL = 65;
+// Sim-seconds of continuous well-fed time required to reproduce.
+export const REPRODUCE_AFTER = 45;
+// Global population cap; reproduction is silently skipped at the cap.
+export const MAX_POPULATION = 24;
+// Added to the parent's hunger and thirst as the cost of reproducing.
+export const REPRODUCTION_NEED_PENALTY = 25;
 
 // Shared payload for the selected animal, polled by the UI every 250 ms.
 export interface AnimalVitals {

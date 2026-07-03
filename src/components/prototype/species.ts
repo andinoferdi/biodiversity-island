@@ -20,6 +20,10 @@ export interface AnimalSpawn {
   x: number;
   z: number;
   heading: number;
+  // Offspring start with fixed moderate needs; the initial roster derives
+  // deterministic needs from position instead (see initialNeed in Animal.tsx).
+  initialHunger?: number;
+  initialThirst?: number;
 }
 
 export const SPECIES: Species[] = [

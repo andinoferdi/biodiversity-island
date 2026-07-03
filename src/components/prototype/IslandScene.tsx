@@ -3,16 +3,16 @@
 import { Canvas } from "@react-three/fiber";
 import { MapControls } from "@react-three/drei";
 import Animal from "./Animal";
-import { ANIMAL_SPAWNS, getSpecies } from "./species";
+import { getSpecies, type AnimalSpawn } from "./species";
 import {
   RESOURCES,
+  WALK_RADIUS,
   type AnimalVitals,
   type ResourceSpot,
   type TimeScale,
 } from "./simulation";
 
 const GROUND_Y = 0.9;
-const WALK_RADIUS = 5.2;
 
 interface TreeSpec {
   x: number;
@@ -114,17 +114,23 @@ function Sea() {
 }
 
 interface IslandSceneProps {
+  population: AnimalSpawn[];
   selectedId: string | null;
   onSelect: (id: string) => void;
   onDeselect: () => void;
+  onDeath: (id: string) => void;
+  onReproduce: (parent: AnimalSpawn, x: number, z: number, heading: number) => void;
   timeScale: TimeScale;
   vitalsRef: React.RefObject<AnimalVitals>;
 }
 
 export default function IslandScene({
+  population,
   selectedId,
   onSelect,
   onDeselect,
+  onDeath,
+  onReproduce,
   timeScale,
   vitalsRef,
 }: IslandSceneProps) {
@@ -160,7 +166,7 @@ export default function IslandScene({
       {RESOURCES.map((spot) => (
         <Resource key={spot.id} spot={spot} />
       ))}
-      {ANIMAL_SPAWNS.map((spawn) => (
+      {population.map((spawn) => (
         <Animal
           key={spawn.id}
           spawn={spawn}
@@ -170,6 +176,8 @@ export default function IslandScene({
           timeScale={timeScale}
           selected={spawn.id === selectedId}
           onSelect={onSelect}
+          onDeath={onDeath}
+          onReproduce={onReproduce}
           vitalsRef={vitalsRef}
         />
       ))}
