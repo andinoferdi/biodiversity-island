@@ -87,8 +87,8 @@ export function TerrainGLB() {
                    posArray[i*3] = center.x; posArray[i*3+1] = -5; posArray[i*3+2] = center.z;
                    modified = true;
                    break;
-                 } else if (object.material === materials.mat20 && y > -0.3 && dist2 < 0.02) {
-                   // trunks are thin, only remove mat20 within 0.14 radius so we don't hit the bridge
+                 } else if (object.material === materials.mat20 && dist2 < 0.04) {
+                   // trunks are thin, only remove mat20 within 0.20 radius so we don't hit the bridge
                    posArray[i*3] = center.x; posArray[i*3+1] = -5; posArray[i*3+2] = center.z;
                    modified = true;
                    break;
