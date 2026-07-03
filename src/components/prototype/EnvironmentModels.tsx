@@ -82,9 +82,9 @@ export function TerrainGLB() {
             `#include <begin_vertex>`,
             `
             #include <begin_vertex>
-            // Procedural river wave
-            float wave = sin(position.x * 8.0 + uTime * 2.0) * 0.012 + 
-                         sin(position.z * 6.0 + uTime * 2.5) * 0.012;
+            // Subtle procedural river ripple
+            float wave = sin(position.x * 8.0 + uTime * 2.0) * 0.006 + 
+                         sin(position.z * 6.0 + uTime * 2.5) * 0.006;
             transformed.y += wave;
             `
           );
