@@ -104,6 +104,7 @@ export default function Animal({
     ArrowLeft: false,
     ArrowDown: false,
     ArrowRight: false,
+    " ": false,
   });
 
   useEffect(() => {
@@ -143,6 +144,8 @@ export default function Animal({
     x: spawn.x,
     z: spawn.z,
     y: 0,
+    jumpY: 0,
+    vy: 0,
     // Snap to the ground on the first sampled frame, ease afterwards.
     placed: false,
     heading: spawn.heading,
@@ -211,11 +214,24 @@ export default function Animal({
         m.wellFedTimer = 0;
       }
 
+      if (m.jumpY > 0 || m.vy !== 0) {
+        m.vy -= 15 * dt; // gravity
+        m.jumpY += m.vy * dt;
+        if (m.jumpY <= 0) {
+          m.jumpY = 0;
+          m.vy = 0;
+        }
+      }
+
       if (selected) {
         m.status = "Idle";
         const k = keys.current;
         let turn = 0;
         let forward = 0;
+
+        if (k[" "] && m.jumpY === 0) {
+          m.vy = 4;
+        }
 
         if (k.w || k.ArrowUp) forward = 1;
         if (k.s || k.ArrowDown) forward = -1;
@@ -235,7 +251,7 @@ export default function Animal({
           const ahead = sampleGround(nextX, nextZ);
 
           let hitVeg = false;
-          if (species.id !== "hawk") {
+          if (species.id !== "hawk" && m.jumpY <= 0.1) {
             for (const v of VEGETATION) {
               const r = species.selectionRadius * 0.5 + 0.35;
               const nd = Math.hypot(v.x - nextX, v.z - nextZ);
@@ -436,7 +452,7 @@ export default function Animal({
       ? MathUtils.lerp(m.y, here.y, Math.min(1, delta * GROUND_SNAP_SPEED))
       : here.y;
     m.placed = true;
-    group.position.set(m.x, m.y, m.z);
+    group.position.set(m.x, m.y + m.jumpY, m.z);
 
     let targetVisual = m.heading;
     if (selected && (keys.current.s || keys.current.ArrowDown) && !keys.current.w && !keys.current.ArrowUp) {
