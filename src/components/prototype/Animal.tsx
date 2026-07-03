@@ -1,8 +1,9 @@
 "use client";
 
-import { useRef } from "react";
+import { Suspense, useRef } from "react";
 import { useFrame, type ThreeEvent } from "@react-three/fiber";
 import type { Group } from "three";
+import AnimalModel from "./AnimalModel";
 import type { AnimalSpawn, Species } from "./species";
 import { biomeAt, getBiome } from "./biomes";
 import {
@@ -84,6 +85,8 @@ export default function Animal({
   vitalsRef,
 }: AnimalProps) {
   const groupRef = useRef<Group>(null);
+  // Read by AnimalModel every frame to pick the deer's animation clip.
+  const statusRef = useRef<AnimalStatus>("Roaming");
   // Per-frame movement and needs state lives in a ref so animation never
   // triggers React renders.
   const motion = useRef({
@@ -231,6 +234,7 @@ export default function Animal({
 
     group.position.set(m.x, groundY, m.z);
     group.rotation.y = m.heading;
+    statusRef.current = m.status;
 
     // Only the selected animal feeds the UI panel, so skip the write
     // otherwise. Written even while paused so the panel stays readable.
@@ -258,43 +262,32 @@ export default function Animal({
     document.body.style.cursor = "";
   };
 
-  const emissive = selected ? species.accentColor : "#000000";
-
   return (
     <group
       ref={groupRef}
       position={[spawn.x, groundY, spawn.z]}
       rotation={[0, spawn.heading, 0]}
-      scale={species.scale}
       onClick={handleClick}
       onPointerOver={handlePointerOver}
       onPointerOut={handlePointerOut}
     >
-      <mesh castShadow position={[0, 0.55, 0]}>
-        <boxGeometry args={[0.6, 0.5, 1.1]} />
-        <meshStandardMaterial color={species.bodyColor} emissive={emissive} />
-      </mesh>
-      <mesh castShadow position={[0, 0.85, 0.65]}>
-        <sphereGeometry args={[0.26, 16, 16]} />
-        <meshStandardMaterial color={species.bodyColor} emissive={emissive} />
-      </mesh>
-      {[
-        [-0.2, 0.45],
-        [0.2, 0.45],
-        [-0.2, -0.45],
-        [0.2, -0.45],
-      ].map(([lx, lz]) => (
-        <mesh key={`${lx},${lz}`} castShadow position={[lx, 0.15, lz]}>
-          <boxGeometry args={[0.14, 0.3, 0.14]} />
-          <meshStandardMaterial color={species.accentColor} />
-        </mesh>
-      ))}
-      <mesh castShadow position={[0, 0.6, -0.65]} rotation={[0.6, 0, 0]}>
-        <boxGeometry args={[0.1, 0.1, 0.35]} />
-        <meshStandardMaterial color={species.accentColor} />
-      </mesh>
+      {/* The per-animal Suspense keeps this animal's frame loop and the rest
+          of the population running while its GLB streams in. Selection
+          feedback is the ring below (cloned GLB materials are shared, so
+          per-instance emissive tinting is no longer available). */}
+      <Suspense fallback={null}>
+        <AnimalModel
+          species={species}
+          timeScale={timeScale}
+          statusRef={statusRef}
+        />
+      </Suspense>
       {selected && (
-        <mesh position={[0, 0.03, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+        <mesh
+          position={[0, 0.03, 0]}
+          rotation={[-Math.PI / 2, 0, 0]}
+          scale={species.selectionRadius}
+        >
           <ringGeometry args={[0.8, 1, 40]} />
           <meshBasicMaterial color="#fbbf24" />
         </mesh>

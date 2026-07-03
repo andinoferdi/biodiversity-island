@@ -161,7 +161,7 @@ export default function BiodiversityPrototype() {
 
       <div className="absolute left-4 top-4 max-w-xs rounded-lg bg-slate-950/70 p-4 text-slate-100 backdrop-blur-sm">
         <h1 className="text-lg font-semibold">Biodiversity Island</h1>
-        <p className="text-sm text-slate-300">Biome Terrain</p>
+        <p className="text-sm text-slate-300">Animal Species</p>
         <p className="mt-1 text-xs text-slate-400">
           {SPECIES.length} species · {population.length} animals
         </p>
