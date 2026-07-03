@@ -1,12 +1,13 @@
-import type { BiomeId } from "./biomes";
+// How a species relates to the river: aquatic animals may only occupy water,
+// amphibians roam water and land freely, terrestrial animals stay on land
+// and only touch the river's edge when drinking.
+export type Locomotion = "aquatic" | "amphibian" | "terrestrial";
 
 export interface Species {
   id: string;
   name: string;
   habitat: string;
-  // Home biome: spawns start here, seek prefers resources here, and roaming
-  // outside it steers back (soft habitat boundary — no hard wall).
-  biomeId: BiomeId;
+  locomotion: Locomotion;
   diet: string;
   // GLB model under public/, plus per-model corrections determined from the
   // GLB bounding boxes and verified in the browser: modelScale normalizes
@@ -45,8 +46,8 @@ export const SPECIES: Species[] = [
   {
     id: "deer",
     name: "Deer",
-    habitat: "Forest",
-    biomeId: "forest",
+    habitat: "Wooded hills",
+    locomotion: "terrestrial",
     diet: "Leaves & shoots",
     modelUrl: "/assets/animal/deer/deer.glb",
     modelScale: 0.33,
@@ -63,8 +64,8 @@ export const SPECIES: Species[] = [
   {
     id: "dove",
     name: "Dove",
-    habitat: "Forest canopy",
-    biomeId: "forest",
+    habitat: "Treetops",
+    locomotion: "terrestrial",
     diet: "Seeds & berries",
     modelUrl: "/assets/animal/dove/dove.glb",
     modelScale: 0.3,
@@ -81,8 +82,8 @@ export const SPECIES: Species[] = [
   {
     id: "elephant",
     name: "Elephant",
-    habitat: "Grassland",
-    biomeId: "grassland",
+    habitat: "Open plains",
+    locomotion: "terrestrial",
     diet: "Grass & shrubs",
     modelUrl: "/assets/animal/elephant/elephant.glb",
     modelScale: 0.0135,
@@ -99,8 +100,8 @@ export const SPECIES: Species[] = [
   {
     id: "duck",
     name: "Duck",
-    habitat: "Shore & pond",
-    biomeId: "shore",
+    habitat: "River & banks",
+    locomotion: "amphibian",
     diet: "Sprouts & insects",
     modelUrl: "/assets/animal/duck/duck.glb",
     modelScale: 0.22,
@@ -117,8 +118,8 @@ export const SPECIES: Species[] = [
   {
     id: "turtle",
     name: "Turtle",
-    habitat: "Sandy shore",
-    biomeId: "shore",
+    habitat: "Riverside",
+    locomotion: "terrestrial",
     diet: "Sea grass",
     modelUrl: "/assets/animal/turtle/turtle.glb",
     modelScale: 0.0015,
@@ -135,12 +136,13 @@ export const SPECIES: Species[] = [
   {
     id: "fish",
     name: "Fish",
-    habitat: "Pond & shallows",
-    biomeId: "shore",
+    habitat: "River",
+    locomotion: "aquatic",
     diet: "Algae & plankton",
     modelUrl: "/assets/animal/fish/fish.glb",
     modelScale: 0.012,
-    modelYOffset: 0.15,
+    // Sits at the water surface; a slight dip keeps the body half-submerged.
+    modelYOffset: 0,
     modelRotY: 0,
     animated: false,
     selectionRadius: 0.6,
@@ -162,19 +164,20 @@ export function getSpecies(speciesId: string): Species {
   return species;
 }
 
-// Deterministic spawn layout: every animal starts inside its species' home
-// biome sector, all within WALK_RADIUS (5.2). Two individuals per species.
+// Deterministic spawn layout validated against the terrain.glb heightmap
+// (scale 3, lift 0.6): fish start inside the river, ducks on/near it, and
+// the terrestrial species on flat land away from the northern mountains.
 export const ANIMAL_SPAWNS: AnimalSpawn[] = [
-  { id: "deer-1", speciesId: "deer", label: "Deer #1", x: 1.9, z: -2.2, heading: 0.7 },
-  { id: "deer-2", speciesId: "deer", label: "Deer #2", x: 3.4, z: -1.6, heading: 3.8 },
-  { id: "dove-1", speciesId: "dove", label: "Dove #1", x: 0.9, z: -3.6, heading: 2.4 },
-  { id: "dove-2", speciesId: "dove", label: "Dove #2", x: 2.4, z: -3.4, heading: 5.1 },
-  { id: "elephant-1", speciesId: "elephant", label: "Elephant #1", x: -3.5, z: 0.3, heading: 0 },
-  { id: "elephant-2", speciesId: "elephant", label: "Elephant #2", x: -2.4, z: -1.4, heading: 2.1 },
-  { id: "duck-1", speciesId: "duck", label: "Duck #1", x: 1.2, z: 3.4, heading: 1.2 },
-  { id: "duck-2", speciesId: "duck", label: "Duck #2", x: 2.9, z: 1.9, heading: 5.3 },
-  { id: "turtle-1", speciesId: "turtle", label: "Turtle #1", x: 0.4, z: 2.6, heading: 3.0 },
-  { id: "turtle-2", speciesId: "turtle", label: "Turtle #2", x: -0.8, z: 4.0, heading: 0.4 },
-  { id: "fish-1", speciesId: "fish", label: "Fish #1", x: 1.8, z: 3.0, heading: 2.0 },
-  { id: "fish-2", speciesId: "fish", label: "Fish #2", x: 0.6, z: 4.4, heading: 4.6 },
+  { id: "deer-1", speciesId: "deer", label: "Deer #1", x: 3.8, z: 2.6, heading: 0.7 },
+  { id: "deer-2", speciesId: "deer", label: "Deer #2", x: 5.2, z: 1.0, heading: 3.8 },
+  { id: "dove-1", speciesId: "dove", label: "Dove #1", x: 4.6, z: 4.0, heading: 2.4 },
+  { id: "dove-2", speciesId: "dove", label: "Dove #2", x: 2.6, z: 3.6, heading: 5.1 },
+  { id: "elephant-1", speciesId: "elephant", label: "Elephant #1", x: -4.2, z: -1.6, heading: 0 },
+  { id: "elephant-2", speciesId: "elephant", label: "Elephant #2", x: -2.8, z: -3.2, heading: 2.1 },
+  { id: "duck-1", speciesId: "duck", label: "Duck #1", x: 1.4, z: -1.0, heading: 1.2 },
+  { id: "duck-2", speciesId: "duck", label: "Duck #2", x: -1.8, z: 1.6, heading: 5.3 },
+  { id: "turtle-1", speciesId: "turtle", label: "Turtle #1", x: 0.8, z: 1.4, heading: 3.0 },
+  { id: "turtle-2", speciesId: "turtle", label: "Turtle #2", x: -2.0, z: -2.0, heading: 0.4 },
+  { id: "fish-1", speciesId: "fish", label: "Fish #1", x: 0.6, z: -0.3, heading: 2.0 },
+  { id: "fish-2", speciesId: "fish", label: "Fish #2", x: 2.4, z: -2.1, heading: 4.6 },
 ];
