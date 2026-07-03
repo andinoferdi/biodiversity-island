@@ -1,11 +1,14 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useEffect, useRef, useState } from "react";
-import { ANIMAL_SPAWNS, SPECIES, getSpecies } from "./species";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ANIMAL_SPAWNS, SPECIES, getSpecies, type AnimalSpawn } from "./species";
+import { getBiome } from "./biomes";
 import {
   CRITICAL_LEVEL,
+  MAX_POPULATION,
   NEED_MAX,
+  WALK_RADIUS,
   type AnimalVitals,
   type TimeScale,
 } from "./simulation";
@@ -19,7 +22,23 @@ const IslandScene = dynamic(() => import("./IslandScene"), {
   ),
 });
 
-const SPAWN_BY_ID = new Map(ANIMAL_SPAWNS.map((spawn) => [spawn.id, spawn]));
+// Offspring start with moderate needs so they join the sim without instantly
+// reproducing or dying.
+const OFFSPRING_INITIAL_NEED = 40;
+// How far from the parent an offspring appears.
+const OFFSPRING_OFFSET = 0.9;
+
+// Per-species counters continue the initial labels ("Grazer #3" → "#4").
+function initialLabelCounters(): Map<string, number> {
+  const counters = new Map<string, number>();
+  for (const spawn of ANIMAL_SPAWNS) {
+    counters.set(
+      spawn.speciesId,
+      (counters.get(spawn.speciesId) ?? 0) + 1
+    );
+  }
+  return counters;
+}
 
 const TIME_OPTIONS: { scale: TimeScale; label: string }[] = [
   { scale: 0, label: "Pause" },
@@ -61,7 +80,57 @@ export default function BiodiversityPrototype() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [timeScale, setTimeScale] = useState<TimeScale>(1);
   const [vitals, setVitals] = useState<AnimalVitals>(INITIAL_VITALS);
+  const [population, setPopulation] = useState<AnimalSpawn[]>(ANIMAL_SPAWNS);
   const vitalsRef = useRef<AnimalVitals>({ ...INITIAL_VITALS });
+  const labelCounters = useRef<Map<string, number> | null>(null);
+
+  const handleDeath = useCallback((id: string) => {
+    setPopulation((prev) => prev.filter((spawn) => spawn.id !== id));
+    setSelectedId((prev) => (prev === id ? null : prev));
+  }, []);
+
+  const handleReproduce = useCallback(
+    (parent: AnimalSpawn, x: number, z: number, heading: number) => {
+      setPopulation((prev) => {
+        if (prev.length >= MAX_POPULATION) return prev;
+
+        const counters = (labelCounters.current ??= initialLabelCounters());
+        const next = (counters.get(parent.speciesId) ?? 0) + 1;
+        counters.set(parent.speciesId, next);
+
+        // Deterministic offset from the parent's heading, clamped so the
+        // offspring always spawns inside the walkable area.
+        let childX = x + Math.sin(heading + Math.PI / 2) * OFFSPRING_OFFSET;
+        let childZ = z + Math.cos(heading + Math.PI / 2) * OFFSPRING_OFFSET;
+        const dist = Math.hypot(childX, childZ);
+        if (dist > WALK_RADIUS) {
+          childX *= WALK_RADIUS / dist;
+          childZ *= WALK_RADIUS / dist;
+        }
+
+        const labelBase = parent.label.split(" #")[0];
+        return [
+          ...prev,
+          {
+            id: `${parent.speciesId}-${next}`,
+            speciesId: parent.speciesId,
+            label: `${labelBase} #${next}`,
+            x: childX,
+            z: childZ,
+            heading,
+            initialHunger: OFFSPRING_INITIAL_NEED,
+            initialThirst: OFFSPRING_INITIAL_NEED,
+          },
+        ];
+      });
+    },
+    []
+  );
+
+  const spawnById = useMemo(
+    () => new Map(population.map((spawn) => [spawn.id, spawn])),
+    [population]
+  );
 
   useEffect(() => {
     if (!selectedId) return;
@@ -72,7 +141,7 @@ export default function BiodiversityPrototype() {
     return () => clearInterval(interval);
   }, [selectedId]);
 
-  const selectedSpawn = selectedId ? SPAWN_BY_ID.get(selectedId) : undefined;
+  const selectedSpawn = selectedId ? spawnById.get(selectedId) : undefined;
   const selectedSpecies = selectedSpawn
     ? getSpecies(selectedSpawn.speciesId)
     : undefined;
@@ -80,18 +149,21 @@ export default function BiodiversityPrototype() {
   return (
     <div className="relative h-dvh w-full overflow-hidden bg-slate-900">
       <IslandScene
+        population={population}
         selectedId={selectedId}
         onSelect={setSelectedId}
         onDeselect={() => setSelectedId(null)}
+        onDeath={handleDeath}
+        onReproduce={handleReproduce}
         timeScale={timeScale}
         vitalsRef={vitalsRef}
       />
 
       <div className="absolute left-4 top-4 max-w-xs rounded-lg bg-slate-950/70 p-4 text-slate-100 backdrop-blur-sm">
         <h1 className="text-lg font-semibold">Biodiversity Island</h1>
-        <p className="text-sm text-slate-300">Simulation Needs</p>
+        <p className="text-sm text-slate-300">Animal Species</p>
         <p className="mt-1 text-xs text-slate-400">
-          {SPECIES.length} species · {ANIMAL_SPAWNS.length} animals
+          {SPECIES.length} species · {population.length} animals
         </p>
         <div className="mt-2 flex gap-1" role="group" aria-label="Simulation speed">
           {TIME_OPTIONS.map(({ scale, label }) => (
@@ -125,6 +197,10 @@ export default function BiodiversityPrototype() {
             <div className="flex justify-between">
               <dt className="text-slate-400">Status</dt>
               <dd>{vitals.status}</dd>
+            </div>
+            <div className="flex justify-between">
+              <dt className="text-slate-400">Biome</dt>
+              <dd>{getBiome(selectedSpecies.biomeId).name}</dd>
             </div>
             <div className="flex justify-between">
               <dt className="text-slate-400">Habitat</dt>
