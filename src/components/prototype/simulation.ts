@@ -13,28 +13,38 @@ import type { BiomeId } from "./biomes";
 
 export interface ResourceSpot {
   id: string;
-  kind: "water" | "food";
+  kind: "food";
   biomeId: BiomeId;
   x: number;
+  // Terrain height at (x, z), sampled offline from terrain.glb with the
+  // world transform in terrain.ts. Static props use it directly; animals
+  // re-derive their own Y per frame via raycast.
+  y: number;
   z: number;
   radius: number;
 }
 
-// Deterministic per-biome resource layout: 2 ponds + 3 food patches, all
-// inside WALK_RADIUS (5.2) and clear of the vegetation in IslandScene. Every
-// biome has its own food patch. Two ponds cannot cover three biomes, so the
-// meadow pond sits right on the forest–grassland boundary: it belongs to the
-// grassland, and forest animals reach it through the global seek fallback in
-// Animal.tsx.
+// The terrain water surface sits at world Y ≈ 0.345–0.358 (terrain.glb at
+// scale 3, lifted 0.6). Any raycast hit at or below this height is River;
+// everything above is Land. The nearest land around the banks starts at
+// ≈ 0.38, so the threshold cleanly separates the two.
+export const WATER_LEVEL = 0.36;
+
+// Minimum walkable steepness: a ground triangle whose normal has Y below
+// this is a cliff wall — animals treat it as an obstacle and turn away.
+export const MIN_GROUND_NORMAL_Y = 0.6;
+
+// Deterministic food layout on the new terrain: four patches on Land (one
+// per quadrant) plus one in the River for the fish. Water is no longer a
+// resource spot — drinking targets the river banks found by terrain.ts.
 export const RESOURCES: ResourceSpot[] = [
-  { id: "pond-shore", kind: "water", biomeId: "shore", x: 1.5, z: 2.6, radius: 1.2 },
-  { id: "pond-meadow", kind: "water", biomeId: "grassland", x: -1.55, z: -2.68, radius: 1.0 },
-  { id: "food-forest", kind: "food", biomeId: "forest", x: 1.6, z: -2.77, radius: 0.7 },
-  { id: "food-grass", kind: "food", biomeId: "grassland", x: -3.2, z: 0.28, radius: 0.7 },
-  { id: "food-shore", kind: "food", biomeId: "shore", x: 0.9, z: 3.3, radius: 0.7 },
+  { id: "food-east", kind: "food", biomeId: "land", x: 4.6, y: 0.41, z: 2.2, radius: 0.7 },
+  { id: "food-west", kind: "food", biomeId: "land", x: -4.8, y: 0.43, z: -2.4, radius: 0.7 },
+  { id: "food-south", kind: "food", biomeId: "land", x: -1.6, y: 0.38, z: 4.2, radius: 0.7 },
+  { id: "food-north", kind: "food", biomeId: "land", x: 1.8, y: 0.43, z: -3.4, radius: 0.7 },
+  { id: "food-river", kind: "food", biomeId: "river", x: -0.5, y: 0.35, z: 0.5, radius: 0.8 },
 ];
 
-export const WATER_SPOTS = RESOURCES.filter((spot) => spot.kind === "water");
 export const FOOD_SPOTS = RESOURCES.filter((spot) => spot.kind === "food");
 
 export const NEED_MAX = 100;
@@ -45,8 +55,9 @@ export const SATISFIED_LEVEL = 10;
 // Above this level the need bar turns red as a visual warning.
 export const CRITICAL_LEVEL = 90;
 
-// Animals can walk anywhere inside this radius; also bounds offspring spawns.
-export const WALK_RADIUS = 5.2;
+// No longer bounds walking — the mesh edge (raycast miss) does that now.
+// Still clamps offspring spawn positions so they land on the terrain.
+export const WALK_RADIUS = 6.5;
 
 // Sim-seconds a need must sit at NEED_MAX before the animal dies.
 export const DEATH_AFTER_CRITICAL = 20;
@@ -69,4 +80,6 @@ export interface AnimalVitals {
   hunger: number;
   thirst: number;
   status: AnimalStatus;
+  // Live biome name at the animal's position ("River" | "Land").
+  biome: string;
 }

@@ -3,7 +3,7 @@
 import { useMemo, useRef } from "react";
 import { useFrame } from "@react-three/fiber";
 import { Clone, useAnimations, useGLTF } from "@react-three/drei";
-import type { Group } from "three";
+import type { AnimationAction, Group } from "three";
 import { clone as cloneSkeleton } from "three/examples/jsm/utils/SkeletonUtils.js";
 import { SPECIES, type Species } from "./species";
 import type { AnimalStatus, TimeScale } from "./simulation";
@@ -22,7 +22,11 @@ export interface AnimalModelProps {
 }
 
 // Maps the simulation status to one of the species' configured animation clips.
-function clipFor(status: AnimalStatus, species: Species, actions: Record<string, any>): string | null {
+function clipFor(
+  status: AnimalStatus,
+  species: Species,
+  actions: Record<string, AnimationAction | null>
+): string | null {
   const anims = species.animations;
   if (!anims) {
     // Fallback: pick the first available animation if none configured

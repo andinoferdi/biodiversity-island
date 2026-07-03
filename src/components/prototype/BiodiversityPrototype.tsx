@@ -3,7 +3,6 @@
 import dynamic from "next/dynamic";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ANIMAL_SPAWNS, SPECIES, getSpecies, type AnimalSpawn } from "./species";
-import { getBiome } from "./biomes";
 import {
   CRITICAL_LEVEL,
   MAX_POPULATION,
@@ -52,6 +51,7 @@ const INITIAL_VITALS: AnimalVitals = {
   hunger: 0,
   thirst: 0,
   status: "Roaming",
+  biome: "Land",
 };
 
 function NeedBar({ label, value }: { label: string; value: number }) {
@@ -200,7 +200,7 @@ export default function BiodiversityPrototype() {
             </div>
             <div className="flex justify-between">
               <dt className="text-slate-400">Biome</dt>
-              <dd>{getBiome(selectedSpecies.biomeId).name}</dd>
+              <dd>{vitals.biome}</dd>
             </div>
             <div className="flex justify-between">
               <dt className="text-slate-400">Habitat</dt>

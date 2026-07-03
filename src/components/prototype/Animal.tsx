@@ -2,19 +2,21 @@
 
 import { Suspense, useRef } from "react";
 import { useFrame, type ThreeEvent } from "@react-three/fiber";
-import type { Group } from "three";
+import { MathUtils, type Group } from "three";
 import AnimalModel from "./AnimalModel";
 import type { AnimalSpawn, Species } from "./species";
-import { biomeAt, getBiome } from "./biomes";
+import { biomeForHeight } from "./biomes";
+import { nearestWaterEdge, sampleGround, type GroundSample } from "./terrain";
 import {
   DEATH_AFTER_CRITICAL,
   FOOD_SPOTS,
+  MIN_GROUND_NORMAL_Y,
   NEED_MAX,
   REPRODUCE_AFTER,
   REPRODUCTION_NEED_PENALTY,
   SATISFIED_LEVEL,
   SEEK_THRESHOLD,
-  WATER_SPOTS,
+  WALK_RADIUS,
   WELL_FED_LEVEL,
   type AnimalStatus,
   type AnimalVitals,
@@ -25,8 +27,6 @@ import {
 interface AnimalProps {
   spawn: AnimalSpawn;
   species: Species;
-  groundY: number;
-  walkRadius: number;
   timeScale: TimeScale;
   selected: boolean;
   onSelect: (id: string) => void;
@@ -37,6 +37,14 @@ interface AnimalProps {
 
 // Extra reach beyond a spot's visual radius that counts as "at the resource".
 const CONSUME_MARGIN = 0.25;
+// Distance to a river-bank point that counts as "standing at the water".
+const DRINK_RANGE = 0.6;
+// How far ahead a candidate wander heading is validated against the terrain.
+const WANDER_LOOKAHEAD = 1.5;
+// Random headings tried before giving up and keeping the current one.
+const WANDER_TRIES = 8;
+// How quickly the visual Y eases toward the raycast ground height.
+const GROUND_SNAP_SPEED = 12;
 
 function distanceTo(x: number, z: number, spot: ResourceSpot) {
   return Math.hypot(spot.x - x, spot.z - z);
@@ -55,16 +63,19 @@ function nearest(x: number, z: number, spots: ResourceSpot[]): ResourceSpot {
   return best;
 }
 
-// Nearest spot inside the species' home biome; if that biome has none
-// (e.g. the forest has no own pond), fall back to the global nearest.
-function nearestForBiome(
-  x: number,
-  z: number,
-  spots: ResourceSpot[],
-  biomeId: Species["biomeId"]
-): ResourceSpot {
-  const own = spots.filter((spot) => spot.biomeId === biomeId);
-  return nearest(x, z, own.length > 0 ? own : spots);
+// Fish graze the river food patch; everyone else eats on land.
+function foodSpotsFor(species: Species): ResourceSpot[] {
+  const biomeId = species.locomotion === "aquatic" ? "river" : "land";
+  return FOOD_SPOTS.filter((spot) => spot.biomeId === biomeId);
+}
+
+// Whether this species may stand on the sampled surface: cliffs block
+// everyone, water blocks land animals, land blocks fish, ducks go anywhere.
+function canOccupy(species: Species, sample: GroundSample): boolean {
+  if (sample.normalY < MIN_GROUND_NORMAL_Y) return false;
+  if (species.locomotion === "aquatic") return sample.water;
+  if (species.locomotion === "terrestrial") return !sample.water;
+  return true;
 }
 
 // Deterministic per-animal starting needs so the herd doesn't seek in sync.
@@ -75,8 +86,6 @@ function initialNeed(seed: number) {
 export default function Animal({
   spawn,
   species,
-  groundY,
-  walkRadius,
   timeScale,
   selected,
   onSelect,
@@ -92,6 +101,9 @@ export default function Animal({
   const motion = useRef({
     x: spawn.x,
     z: spawn.z,
+    y: 0,
+    // Snap to the ground on the first sampled frame, ease afterwards.
+    placed: false,
     heading: spawn.heading,
     headingTarget: spawn.heading,
     wanderTimer: 0,
@@ -112,6 +124,13 @@ export default function Animal({
     if (!group) return;
     const m = motion.current;
     if (m.hasDied) return;
+
+    // Dynamic ground contact: one ray straight down at the current (X, Z).
+    // No hit means the terrain is still streaming in — stay parked until
+    // there is ground to stand on.
+    let here = sampleGround(m.x, m.z);
+    if (!here) return;
+
     // Every mutation below uses dt, so Pause (0) freezes the whole simulation
     // and 4x accelerates it uniformly and frame-rate independently.
     const dt = delta * timeScale;
@@ -147,12 +166,21 @@ export default function Animal({
         m.wellFedTimer = 0;
       }
 
-      const waterSpot = nearestForBiome(m.x, m.z, WATER_SPOTS, species.biomeId);
-      const atWater =
-        distanceTo(m.x, m.z, waterSpot) < waterSpot.radius + CONSUME_MARGIN;
-      const foodSpot = nearestForBiome(m.x, m.z, FOOD_SPOTS, species.biomeId);
+      const foodSpot = nearest(m.x, m.z, foodSpotsFor(species));
       const atFood =
         distanceTo(m.x, m.z, foodSpot) < foodSpot.radius + CONSUME_MARGIN;
+
+      // "At water": swimmers and waders drink wherever they float; land
+      // animals must stand next to the nearest river-bank point.
+      const waterEdge =
+        species.locomotion === "terrestrial"
+          ? nearestWaterEdge(m.x, m.z)
+          : null;
+      const atWater =
+        species.locomotion === "terrestrial"
+          ? waterEdge !== null &&
+            Math.hypot(waterEdge.x - m.x, waterEdge.z - m.z) < DRINK_RANGE
+          : here.water;
 
       let moving = true;
       if (atWater && m.thirst > SATISFIED_LEVEL && m.status === "Drinking") {
@@ -167,7 +195,12 @@ export default function Animal({
           moving = false;
         } else {
           m.status = "Seeking water";
-          m.headingTarget = Math.atan2(waterSpot.x - m.x, waterSpot.z - m.z);
+          // Head for the nearest river bank (ducks on land included; fish
+          // are always in water, so they never reach this branch).
+          const target = waterEdge ?? nearestWaterEdge(m.x, m.z);
+          if (target) {
+            m.headingTarget = Math.atan2(target.x - m.x, target.z - m.z);
+          }
         }
       } else if (m.hunger > SEEK_THRESHOLD) {
         if (atFood) {
@@ -179,11 +212,24 @@ export default function Animal({
         }
       } else {
         m.status = "Roaming";
-        // Pick a new wander direction every few seconds.
+        // Pick a new wander direction every few seconds, validated against
+        // the terrain: the look-ahead point must be standable for this
+        // species (fish stay in the river, land animals stay off it).
         m.wanderTimer -= dt;
         if (m.wanderTimer <= 0) {
           m.wanderTimer = 2 + Math.random() * 3;
-          m.headingTarget = m.heading + (Math.random() - 0.5) * Math.PI;
+          for (let attempt = 0; attempt < WANDER_TRIES; attempt++) {
+            const spread = attempt === 0 ? Math.PI : Math.PI * 2;
+            const candidate = m.heading + (Math.random() - 0.5) * spread;
+            const look = sampleGround(
+              m.x + Math.sin(candidate) * WANDER_LOOKAHEAD,
+              m.z + Math.cos(candidate) * WANDER_LOOKAHEAD
+            );
+            if (look && canOccupy(species, look)) {
+              m.headingTarget = candidate;
+              break;
+            }
+          }
         }
       }
 
@@ -194,24 +240,28 @@ export default function Animal({
       }
 
       if (moving) {
-        const effectiveRadius = species.roamRadius ?? walkRadius;
-
-        // Soft habitat boundary: a roaming animal that wandered out of its
-        // home biome steers toward the biome's center (same mechanism as the
-        // shoreline steer — no hard wall, seek steering is untouched).
-        if (
-          m.status === "Roaming" &&
-          biomeAt(m.x, m.z).id !== species.biomeId
-        ) {
-          const home = getBiome(species.biomeId);
-          m.headingTarget = Math.atan2(home.centerX - m.x, home.centerZ - m.z);
+        // Self-rescue: standing somewhere invalid (e.g. offspring dropped on
+        // the wrong side of the bank) — head for the nearest bank, which is
+        // the shortest way back to legal ground for fish and land animals
+        // alike. Entry into the next cell is not blocked in this state.
+        const stranded = !canOccupy(species, here);
+        if (stranded) {
+          const edge = nearestWaterEdge(m.x, m.z);
+          if (edge) {
+            m.headingTarget = Math.atan2(edge.x - m.x, edge.z - m.z);
+          }
         }
 
-        // Near the shoreline, steer back toward the island center instead of
-        // bouncing (resources all sit inside the walk radius, so this never
-        // fights the seek steering for long).
+        // Soft roam boundary: species with an extended roam radius (e.g. the
+        // hawk, which soars beyond the terrain mesh) steer back toward the
+        // center before a raycast miss would register as a world edge.
+        const effectiveRadius = species.roamRadius ?? WALK_RADIUS;
         const distFromCenter = Math.hypot(m.x, m.z);
-        if (m.status === "Roaming" && distFromCenter > effectiveRadius * 0.85) {
+        if (
+          !stranded &&
+          m.status === "Roaming" &&
+          distFromCenter > effectiveRadius * 0.85
+        ) {
           m.headingTarget = Math.atan2(-m.x, -m.z);
         }
 
@@ -222,10 +272,32 @@ export default function Animal({
         );
         m.heading += diff * Math.min(1, species.turnSpeed * dt);
 
-        m.x += Math.sin(m.heading) * species.moveSpeed * dt;
-        m.z += Math.cos(m.heading) * species.moveSpeed * dt;
+        const nextX = m.x + Math.sin(m.heading) * species.moveSpeed * dt;
+        const nextZ = m.z + Math.cos(m.heading) * species.moveSpeed * dt;
+        const ahead = sampleGround(nextX, nextZ);
 
-        // Hard clamp as a safety net so the animal can never leave the boundary.
+        if (!ahead) {
+          // Raycast miss: walked past the edge of the terrain mesh — the
+          // world boundary. Turn back toward the island center.
+          m.headingTarget = Math.atan2(-m.x, -m.z);
+        } else if (ahead.normalY < MIN_GROUND_NORMAL_Y) {
+          // Steep slope ahead: treat the cliff as a wall and turn away.
+          m.headingTarget =
+            m.heading + Math.PI * (0.75 + Math.random() * 0.5);
+        } else if (!stranded && !canOccupy(species, ahead)) {
+          // Biome border: fish bounce off the banks, land animals bounce
+          // off the water line.
+          m.headingTarget =
+            m.heading + Math.PI * (0.75 + Math.random() * 0.5);
+        } else {
+          m.x = nextX;
+          m.z = nextZ;
+          here = ahead;
+        }
+
+        // Hard clamp as a final safety net (mainly for species like the
+        // hawk whose roamRadius extends past the terrain mesh) so nothing
+        // can drift arbitrarily far even if the raycast checks above miss.
         const dist = Math.hypot(m.x, m.z);
         if (dist > effectiveRadius) {
           m.x *= effectiveRadius / dist;
@@ -234,7 +306,13 @@ export default function Animal({
       }
     }
 
-    group.position.set(m.x, groundY, m.z);
+    // Follow the terrain contour: snap on the first placed frame, then ease
+    // so low-poly face seams don't make the animal pop.
+    m.y = m.placed
+      ? MathUtils.lerp(m.y, here.y, Math.min(1, delta * GROUND_SNAP_SPEED))
+      : here.y;
+    m.placed = true;
+    group.position.set(m.x, m.y, m.z);
     group.rotation.y = m.heading;
     statusRef.current = m.status;
 
@@ -247,6 +325,7 @@ export default function Animal({
       vitals.hunger = m.hunger;
       vitals.thirst = m.thirst;
       vitals.status = m.status;
+      vitals.biome = biomeForHeight(here.y).name;
     }
   });
 
@@ -267,7 +346,7 @@ export default function Animal({
   return (
     <group
       ref={groupRef}
-      position={[spawn.x, groundY, spawn.z]}
+      position={[spawn.x, 0, spawn.z]}
       rotation={[0, spawn.heading, 0]}
       onClick={handleClick}
       onPointerOver={handlePointerOver}

@@ -1,7 +1,8 @@
 "use client";
 
-import { useMemo } from "react";
-import { Clone, useGLTF } from "@react-three/drei";
+import { useEffect, useMemo } from "react";
+import { Bvh, Clone, useGLTF } from "@react-three/drei";
+import { setTerrainRoot, TERRAIN_SCALE, TERRAIN_URL, TERRAIN_Y } from "./terrain";
 
 // First GLB pipeline of the project: the three small environment models are
 // loaded once via useGLTF, rendered per instance with drei <Clone> (shared
@@ -13,6 +14,38 @@ const LOG_URL = "/assets/environment/log/log.glb";
 useGLTF.preload(TREE_URL);
 useGLTF.preload(ROCK_URL);
 useGLTF.preload(LOG_URL);
+useGLTF.preload(TERRAIN_URL);
+
+// The island landmass: a single low-poly GLB with hills, cliffs, a river,
+// and its water surfaces. <Bvh> builds a bounds tree for every mesh inside,
+// which is what keeps the per-animal ground raycasts in Animal.tsx cheap.
+// On mount the scene registers itself with terrain.ts so those raycasts
+// (and the loading overlay in IslandScene) can find it.
+export function TerrainGLB() {
+  const { scene } = useGLTF(TERRAIN_URL);
+  useMemo(() => {
+    scene.traverse((object) => {
+      object.castShadow = true;
+      object.receiveShadow = true;
+    });
+  }, [scene]);
+  useEffect(() => {
+    // The transform props below were applied during render; make sure the
+    // world matrices reflect them before the first raycast runs.
+    scene.updateMatrixWorld(true);
+    setTerrainRoot(scene);
+    return () => setTerrainRoot(null);
+  }, [scene]);
+  return (
+    <Bvh firstHitOnly>
+      <primitive
+        object={scene}
+        position={[0, TERRAIN_Y, 0]}
+        scale={TERRAIN_SCALE}
+      />
+    </Bvh>
+  );
+}
 
 // Loads a GLB scene and enables shadow casting on all of its meshes once;
 // <Clone> copies the flag onto every instance. Decided here, not per call
