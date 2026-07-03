@@ -3,6 +3,7 @@
 import dynamic from "next/dynamic";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ANIMAL_SPAWNS, SPECIES, getSpecies, type AnimalSpawn } from "./species";
+import { getBiome } from "./biomes";
 import {
   CRITICAL_LEVEL,
   MAX_POPULATION,
@@ -160,7 +161,7 @@ export default function BiodiversityPrototype() {
 
       <div className="absolute left-4 top-4 max-w-xs rounded-lg bg-slate-950/70 p-4 text-slate-100 backdrop-blur-sm">
         <h1 className="text-lg font-semibold">Biodiversity Island</h1>
-        <p className="text-sm text-slate-300">Population Lifecycle</p>
+        <p className="text-sm text-slate-300">Biome Terrain</p>
         <p className="mt-1 text-xs text-slate-400">
           {SPECIES.length} species · {population.length} animals
         </p>
@@ -196,6 +197,10 @@ export default function BiodiversityPrototype() {
             <div className="flex justify-between">
               <dt className="text-slate-400">Status</dt>
               <dd>{vitals.status}</dd>
+            </div>
+            <div className="flex justify-between">
+              <dt className="text-slate-400">Biome</dt>
+              <dd>{getBiome(selectedSpecies.biomeId).name}</dd>
             </div>
             <div className="flex justify-between">
               <dt className="text-slate-400">Habitat</dt>

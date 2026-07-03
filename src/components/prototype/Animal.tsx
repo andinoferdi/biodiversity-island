@@ -4,6 +4,7 @@ import { useRef } from "react";
 import { useFrame, type ThreeEvent } from "@react-three/fiber";
 import type { Group } from "three";
 import type { AnimalSpawn, Species } from "./species";
+import { biomeAt, getBiome } from "./biomes";
 import {
   DEATH_AFTER_CRITICAL,
   FOOD_SPOTS,
@@ -12,7 +13,7 @@ import {
   REPRODUCTION_NEED_PENALTY,
   SATISFIED_LEVEL,
   SEEK_THRESHOLD,
-  WATER_SPOT,
+  WATER_SPOTS,
   WELL_FED_LEVEL,
   type AnimalStatus,
   type AnimalVitals,
@@ -40,10 +41,10 @@ function distanceTo(x: number, z: number, spot: ResourceSpot) {
   return Math.hypot(spot.x - x, spot.z - z);
 }
 
-function nearestFood(x: number, z: number): ResourceSpot {
-  let best = FOOD_SPOTS[0];
+function nearest(x: number, z: number, spots: ResourceSpot[]): ResourceSpot {
+  let best = spots[0];
   let bestDist = distanceTo(x, z, best);
-  for (const spot of FOOD_SPOTS.slice(1)) {
+  for (const spot of spots.slice(1)) {
     const dist = distanceTo(x, z, spot);
     if (dist < bestDist) {
       best = spot;
@@ -51,6 +52,18 @@ function nearestFood(x: number, z: number): ResourceSpot {
     }
   }
   return best;
+}
+
+// Nearest spot inside the species' home biome; if that biome has none
+// (e.g. the forest has no own pond), fall back to the global nearest.
+function nearestForBiome(
+  x: number,
+  z: number,
+  spots: ResourceSpot[],
+  biomeId: Species["biomeId"]
+): ResourceSpot {
+  const own = spots.filter((spot) => spot.biomeId === biomeId);
+  return nearest(x, z, own.length > 0 ? own : spots);
 }
 
 // Deterministic per-animal starting needs so the herd doesn't seek in sync.
@@ -131,9 +144,10 @@ export default function Animal({
         m.wellFedTimer = 0;
       }
 
+      const waterSpot = nearestForBiome(m.x, m.z, WATER_SPOTS, species.biomeId);
       const atWater =
-        distanceTo(m.x, m.z, WATER_SPOT) < WATER_SPOT.radius + CONSUME_MARGIN;
-      const foodSpot = nearestFood(m.x, m.z);
+        distanceTo(m.x, m.z, waterSpot) < waterSpot.radius + CONSUME_MARGIN;
+      const foodSpot = nearestForBiome(m.x, m.z, FOOD_SPOTS, species.biomeId);
       const atFood =
         distanceTo(m.x, m.z, foodSpot) < foodSpot.radius + CONSUME_MARGIN;
 
@@ -150,7 +164,7 @@ export default function Animal({
           moving = false;
         } else {
           m.status = "Seeking water";
-          m.headingTarget = Math.atan2(WATER_SPOT.x - m.x, WATER_SPOT.z - m.z);
+          m.headingTarget = Math.atan2(waterSpot.x - m.x, waterSpot.z - m.z);
         }
       } else if (m.hunger > SEEK_THRESHOLD) {
         if (atFood) {
@@ -177,6 +191,17 @@ export default function Animal({
       }
 
       if (moving) {
+        // Soft habitat boundary: a roaming animal that wandered out of its
+        // home biome steers toward the biome's center (same mechanism as the
+        // shoreline steer — no hard wall, seek steering is untouched).
+        if (
+          m.status === "Roaming" &&
+          biomeAt(m.x, m.z).id !== species.biomeId
+        ) {
+          const home = getBiome(species.biomeId);
+          m.headingTarget = Math.atan2(home.centerX - m.x, home.centerZ - m.z);
+        }
+
         // Near the shoreline, steer back toward the island center instead of
         // bouncing (resources all sit inside the walk radius, so this never
         // fights the seek steering for long).

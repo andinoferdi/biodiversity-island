@@ -9,24 +9,32 @@ export type AnimalStatus =
   | "Starving"
   | "Dehydrated";
 
+import type { BiomeId } from "./biomes";
+
 export interface ResourceSpot {
   id: string;
   kind: "water" | "food";
+  biomeId: BiomeId;
   x: number;
   z: number;
   radius: number;
 }
 
-// Deterministic resource layout: one pond and three food patches, all inside
-// WALK_RADIUS (5.2) and clear of the tree positions in IslandScene.
+// Deterministic per-biome resource layout: 2 ponds + 3 food patches, all
+// inside WALK_RADIUS (5.2) and clear of the vegetation in IslandScene. Every
+// biome has its own food patch. Two ponds cannot cover three biomes, so the
+// meadow pond sits right on the forest–grassland boundary: it belongs to the
+// grassland, and forest animals reach it through the global seek fallback in
+// Animal.tsx.
 export const RESOURCES: ResourceSpot[] = [
-  { id: "pond", kind: "water", x: -2.8, z: -2.6, radius: 1.1 },
-  { id: "food-east", kind: "food", x: 3.1, z: 0.2, radius: 0.7 },
-  { id: "food-center", kind: "food", x: -0.6, z: -1.5, radius: 0.7 },
-  { id: "food-north", kind: "food", x: 0.4, z: 2.2, radius: 0.7 },
+  { id: "pond-shore", kind: "water", biomeId: "shore", x: 1.5, z: 2.6, radius: 1.2 },
+  { id: "pond-meadow", kind: "water", biomeId: "grassland", x: -1.55, z: -2.68, radius: 1.0 },
+  { id: "food-forest", kind: "food", biomeId: "forest", x: 1.6, z: -2.77, radius: 0.7 },
+  { id: "food-grass", kind: "food", biomeId: "grassland", x: -3.2, z: 0.28, radius: 0.7 },
+  { id: "food-shore", kind: "food", biomeId: "shore", x: 0.9, z: 3.3, radius: 0.7 },
 ];
 
-export const WATER_SPOT = RESOURCES.find((spot) => spot.kind === "water")!;
+export const WATER_SPOTS = RESOURCES.filter((spot) => spot.kind === "water");
 export const FOOD_SPOTS = RESOURCES.filter((spot) => spot.kind === "food");
 
 export const NEED_MAX = 100;

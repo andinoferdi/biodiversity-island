@@ -1,7 +1,12 @@
+import type { BiomeId } from "./biomes";
+
 export interface Species {
   id: string;
   name: string;
   habitat: string;
+  // Home biome: spawns start here, seek prefers resources here, and roaming
+  // outside it steers back (soft habitat boundary — no hard wall).
+  biomeId: BiomeId;
   diet: string;
   bodyColor: string;
   accentColor: string;
@@ -31,6 +36,7 @@ export const SPECIES: Species[] = [
     id: "island-grazer",
     name: "Island Grazer",
     habitat: "Grassland",
+    biomeId: "grassland",
     diet: "Grass & shrubs",
     bodyColor: "#c47a3d",
     accentColor: "#9c5f2e",
@@ -45,6 +51,7 @@ export const SPECIES: Species[] = [
     id: "dune-hopper",
     name: "Dune Hopper",
     habitat: "Sandy shore",
+    biomeId: "shore",
     diet: "Seeds & sprouts",
     bodyColor: "#e8e3d1",
     accentColor: "#b9b09a",
@@ -58,7 +65,8 @@ export const SPECIES: Species[] = [
   {
     id: "highland-strider",
     name: "Highland Strider",
-    habitat: "Inland meadow",
+    habitat: "Forest",
+    biomeId: "forest",
     diet: "Leaves & bark",
     bodyColor: "#4f6b8f",
     accentColor: "#3a4f6b",
@@ -81,14 +89,15 @@ export function getSpecies(speciesId: string): Species {
   return species;
 }
 
-// Deterministic spawn layout: spread across the island, all within WALK_RADIUS (5.2).
+// Deterministic spawn layout: every animal starts inside its species' home
+// biome sector, all within WALK_RADIUS (5.2).
 export const ANIMAL_SPAWNS: AnimalSpawn[] = [
-  { id: "grazer-1", speciesId: "island-grazer", label: "Grazer #1", x: 2, z: 0, heading: 0 },
-  { id: "grazer-2", speciesId: "island-grazer", label: "Grazer #2", x: -2.4, z: -2.2, heading: 2.1 },
-  { id: "grazer-3", speciesId: "island-grazer", label: "Grazer #3", x: 0.8, z: 3.2, heading: 4.4 },
-  { id: "hopper-1", speciesId: "dune-hopper", label: "Hopper #1", x: -3.6, z: 1.8, heading: 1.2 },
-  { id: "hopper-2", speciesId: "dune-hopper", label: "Hopper #2", x: 3.4, z: -2.8, heading: 5.3 },
-  { id: "hopper-3", speciesId: "dune-hopper", label: "Hopper #3", x: -0.6, z: -4.1, heading: 3.0 },
-  { id: "strider-1", speciesId: "highland-strider", label: "Strider #1", x: -1.2, z: 1.1, heading: 0.7 },
-  { id: "strider-2", speciesId: "highland-strider", label: "Strider #2", x: 4.1, z: 1.9, heading: 3.8 },
+  { id: "grazer-1", speciesId: "island-grazer", label: "Grazer #1", x: -3.5, z: 0.3, heading: 0 },
+  { id: "grazer-2", speciesId: "island-grazer", label: "Grazer #2", x: -2.4, z: -1.4, heading: 2.1 },
+  { id: "grazer-3", speciesId: "island-grazer", label: "Grazer #3", x: -2.6, z: 1.5, heading: 4.4 },
+  { id: "hopper-1", speciesId: "dune-hopper", label: "Hopper #1", x: 1.2, z: 3.4, heading: 1.2 },
+  { id: "hopper-2", speciesId: "dune-hopper", label: "Hopper #2", x: 2.9, z: 1.9, heading: 5.3 },
+  { id: "hopper-3", speciesId: "dune-hopper", label: "Hopper #3", x: 0.4, z: 2.6, heading: 3.0 },
+  { id: "strider-1", speciesId: "highland-strider", label: "Strider #1", x: 1.9, z: -2.2, heading: 0.7 },
+  { id: "strider-2", speciesId: "highland-strider", label: "Strider #2", x: 0.9, z: -3.6, heading: 3.8 },
 ];

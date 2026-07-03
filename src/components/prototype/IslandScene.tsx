@@ -1,8 +1,11 @@
 "use client";
 
+import { Suspense } from "react";
 import { Canvas } from "@react-three/fiber";
 import { MapControls } from "@react-three/drei";
 import Animal from "./Animal";
+import { BIOMES } from "./biomes";
+import { Log, Rock, Tree } from "./EnvironmentModels";
 import { getSpecies, type AnimalSpawn } from "./species";
 import {
   RESOURCES,
@@ -13,40 +16,69 @@ import {
 } from "./simulation";
 
 const GROUND_Y = 0.9;
+// Radius of the biome ground wedges — matches the grass cylinder top.
+const BIOME_RADIUS = 6.4;
 
-interface TreeSpec {
+interface VegetationSpec {
+  kind: "tree" | "rock" | "log";
   x: number;
   z: number;
   scale: number;
   rotY: number;
 }
 
-const TREES: TreeSpec[] = [
-  { x: 2.6, z: 2.1, scale: 1.0, rotY: 0.4 },
-  { x: -3.1, z: 1.4, scale: 1.15, rotY: 1.2 },
-  { x: -1.8, z: -3.4, scale: 0.9, rotY: 2.1 },
-  { x: 3.9, z: -1.6, scale: 1.05, rotY: 0.8 },
-  { x: 0.6, z: 4.3, scale: 1.2, rotY: 2.8 },
-  { x: -4.4, z: -1.2, scale: 0.95, rotY: 1.7 },
-  { x: 4.6, z: 1.1, scale: 0.85, rotY: 3.0 },
-  { x: -0.9, z: 2.9, scale: 1.1, rotY: 0.2 },
-  { x: 1.7, z: -4.2, scale: 1.0, rotY: 1.4 },
-  { x: -2.6, z: 4.0, scale: 0.9, rotY: 2.4 },
-  { x: -4.1, z: 2.8, scale: 1.05, rotY: 0.6 },
-  { x: 3.2, z: 3.8, scale: 0.95, rotY: 1.9 },
+// Deterministic vegetation layout, composed per biome: the forest sector
+// (theta 0–120°) is dense trees + logs, the grassland (120–240°) sparse trees
+// + rocks, the shore (240–360°) rocks + driftwood logs. All positions avoid
+// the resource spots in simulation.ts.
+const VEGETATION: VegetationSpec[] = [
+  // Forest
+  { kind: "tree", x: 4.4, z: -0.8, scale: 1.0, rotY: 0.4 },
+  { kind: "tree", x: 5.0, z: -2.3, scale: 1.15, rotY: 1.2 },
+  { kind: "tree", x: 3.3, z: -3.3, scale: 0.9, rotY: 2.1 },
+  { kind: "tree", x: 4.8, z: -3.4, scale: 1.05, rotY: 0.8 },
+  { kind: "tree", x: 3.3, z: -4.8, scale: 1.1, rotY: 2.8 },
+  { kind: "tree", x: 1.5, z: -4.1, scale: 0.95, rotY: 1.7 },
+  { kind: "tree", x: 0.5, z: -5.4, scale: 1.2, rotY: 3.0 },
+  { kind: "tree", x: -0.4, z: -4.2, scale: 0.9, rotY: 0.2 },
+  { kind: "tree", x: -1.8, z: -4.9, scale: 1.0, rotY: 1.4 },
+  { kind: "log", x: 3.3, z: -0.9, scale: 1.0, rotY: 0.7 },
+  { kind: "log", x: -0.6, z: -3.6, scale: 0.85, rotY: 2.3 },
+  // Grassland
+  { kind: "tree", x: -4.0, z: -4.0, scale: 1.05, rotY: 0.6 },
+  { kind: "tree", x: -5.2, z: -0.5, scale: 0.95, rotY: 1.9 },
+  { kind: "tree", x: -4.4, z: 3.7, scale: 1.1, rotY: 2.4 },
+  { kind: "rock", x: -3.3, z: -2.3, scale: 1.0, rotY: 0.9 },
+  { kind: "rock", x: -4.3, z: 1.1, scale: 1.2, rotY: 2.0 },
+  { kind: "rock", x: -3.1, z: 3.7, scale: 0.85, rotY: 4.1 },
+  // Shore
+  { kind: "rock", x: -1.6, z: 4.3, scale: 1.1, rotY: 1.1 },
+  { kind: "rock", x: 0.5, z: 5.5, scale: 0.9, rotY: 2.6 },
+  { kind: "rock", x: 2.5, z: 4.6, scale: 1.25, rotY: 0.3 },
+  { kind: "rock", x: 4.9, z: 0.9, scale: 1.0, rotY: 3.4 },
+  { kind: "log", x: -0.9, z: 5.3, scale: 1.0, rotY: 1.6 },
+  { kind: "log", x: 4.3, z: 3.6, scale: 0.9, rotY: 4.4 },
+  { kind: "log", x: 3.9, z: 1.8, scale: 0.8, rotY: 2.9 },
 ];
 
-function Tree({ x, z, scale, rotY }: TreeSpec) {
+const VEGETATION_COMPONENTS = { tree: Tree, rock: Rock, log: Log } as const;
+
+function Vegetation() {
   return (
-    <group position={[x, GROUND_Y, z]} scale={scale} rotation={[0, rotY, 0]}>
-      <mesh castShadow position={[0, 0.5, 0]}>
-        <cylinderGeometry args={[0.12, 0.18, 1, 8]} />
-        <meshStandardMaterial color="#6b4226" />
-      </mesh>
-      <mesh castShadow position={[0, 1.4, 0]}>
-        <coneGeometry args={[0.7, 1.6, 10]} />
-        <meshStandardMaterial color="#2f7d32" />
-      </mesh>
+    <group>
+      {VEGETATION.map((spec) => {
+        const Model = VEGETATION_COMPONENTS[spec.kind];
+        return (
+          <Model
+            key={`${spec.kind}:${spec.x},${spec.z}`}
+            x={spec.x}
+            z={spec.z}
+            groundY={GROUND_Y}
+            scale={spec.scale}
+            rotY={spec.rotY}
+          />
+        );
+      })}
     </group>
   );
 }
@@ -66,6 +98,22 @@ function Island() {
         <cylinderGeometry args={[6.4, 6.9, 0.4, 48]} />
         <meshStandardMaterial color="#4c9a3f" />
       </mesh>
+      {/* Three tinted 120° wedges make the biome boundaries readable from the
+          top-down camera. The wedge rotation maps geometry angle a to world
+          direction (cos a, 0, -sin a) — the same convention as biomeAt(). */}
+      {BIOMES.map((biome) => (
+        <mesh
+          key={biome.id}
+          receiveShadow
+          rotation={[-Math.PI / 2, 0, 0]}
+          position={[0, GROUND_Y + 0.002, 0]}
+        >
+          <circleGeometry
+            args={[BIOME_RADIUS, 48, biome.thetaStart, biome.thetaLength]}
+          />
+          <meshStandardMaterial color={biome.groundColor} />
+        </mesh>
+      ))}
     </group>
   );
 }
@@ -160,9 +208,12 @@ export default function IslandScene({
       />
       <Sea />
       <Island />
-      {TREES.map((tree) => (
-        <Tree key={`${tree.x},${tree.z}`} {...tree} />
-      ))}
+      {/* GLB vegetation suspends while the models stream in; the island,
+          resources, and animals render immediately so the page is never
+          blank. */}
+      <Suspense fallback={null}>
+        <Vegetation />
+      </Suspense>
       {RESOURCES.map((spot) => (
         <Resource key={spot.id} spot={spot} />
       ))}
