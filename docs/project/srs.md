@@ -15,15 +15,16 @@ Baseline project yang sudah terverifikasi:
 - Branch `develop` sudah ada sebagai basis integrasi
 - Langkah awal fase Hari 3–5 (species roster) `Implemented` di branch `andino/feat/species-roster` — 3 spesies berbasis data (`src/components/prototype/species.ts`), 8 individu (`src/components/prototype/Animal.tsx`), seleksi per-id, panel data spesies; lint serta production build lulus (dokumentasi: `docs/feature/species-roster/species-roster.md`)
 - Langkah kedua fase Hari 3–5 (simulation needs) `Implemented` di branch `andino/feat/simulation-needs` — waktu simulasi Pause/1×/4×, kebutuhan lapar–haus per spesies, sumber daya 1 kolam + 3 petak makanan (`src/components/prototype/simulation.ts`), perilaku berbasis kebutuhan dan status/bar live di panel; lint serta production build lulus (dokumentasi: `docs/feature/simulation-needs/simulation-needs.md`)
+- Langkah terakhir fase Hari 3–5 (population lifecycle) `Implemented` di branch `andino/feat/population-lifecycle` — kematian setelah kebutuhan bertahan di maksimum (status "Starving"/"Dehydrated"), reproduksi sederhana berbasis timer well-fed, batas populasi 24, sensus live, deselect otomatis saat hewan terpilih mati (`src/components/prototype/simulation.ts`, `Animal.tsx`, `BiodiversityPrototype.tsx`); lint serta production build lulus (dokumentasi: `docs/feature/population-lifecycle/population-lifecycle.md`)
 
-Sisa fase Hari 3–5 (mati dan reproduksi sederhana) serta fitur fase berikutnya (asset GLB, bioma, krisis, save lokal) belum ada di source code. Dependency dan fitur harus selalu diverifikasi dari `package.json` dan source code sebelum dianggap sudah terpasang atau selesai.
+Fase Hari 3–5 (Simulasi Inti) selesai. Fitur fase berikutnya (asset GLB, bioma, predator–mangsa, krisis, save lokal) belum ada di source code. Dependency dan fitur harus selalu diverifikasi dari `package.json` dan source code sebelum dianggap sudah terpasang atau selesai.
 
 ## Roadmap & Milestones
 
 Jumlah hari adalah panduan, bukan target utama. Pindah tahap hanya setelah fitur tahap sebelumnya stabil dan dapat diuji. Pembagian peran teknis: Next.js menangani struktur aplikasi, React Three Fiber menangani Canvas, interaksi, dan animasi per frame, GLTFLoader memuat aset GLB, dan InstancedMesh mengurangi draw call untuk vegetasi berulang.
 
 1. **Hari 1–2 — Prototype** (`Implemented`): pulau placeholder, kamera, cahaya, hewan bergerak, seleksi, dan panel informasi.
-2. **Hari 3–5 — Simulasi Inti** (`In Progress` — species roster dan simulation needs `Implemented`; mati & reproduksi `Planned`): waktu simulasi, lapar, haus, makanan, air, batas habitat, mati, dan reproduksi sederhana.
+2. **Hari 3–5 — Simulasi Inti** (`Implemented` — species roster, simulation needs, dan population lifecycle semuanya tervalidasi): waktu simulasi, lapar, haus, makanan, air, batas habitat, mati, dan reproduksi sederhana.
 3. **Hari 6–9 — Bioma & Spesies** (`Planned`): tiga bioma, enam spesies GLB, animasi, predator–mangsa, serta tiga krisis.
 4. **Hari 10–12 — Pengalaman Utama** (`Planned`): UI utama, tutorial, statistik populasi, save lokal, balancing, audio, dan responsivitas.
 5. **Hari 13–selesai — Optimasi & Release** (`Planned`): optimasi GLB, instancing tanaman, pengujian, perbaikan bug, dokumentasi, dan deployment.

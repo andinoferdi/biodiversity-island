@@ -5,11 +5,15 @@ import { useFrame, type ThreeEvent } from "@react-three/fiber";
 import type { Group } from "three";
 import type { AnimalSpawn, Species } from "./species";
 import {
+  DEATH_AFTER_CRITICAL,
   FOOD_SPOTS,
   NEED_MAX,
+  REPRODUCE_AFTER,
+  REPRODUCTION_NEED_PENALTY,
   SATISFIED_LEVEL,
   SEEK_THRESHOLD,
   WATER_SPOT,
+  WELL_FED_LEVEL,
   type AnimalStatus,
   type AnimalVitals,
   type ResourceSpot,
@@ -24,6 +28,8 @@ interface AnimalProps {
   timeScale: TimeScale;
   selected: boolean;
   onSelect: (id: string) => void;
+  onDeath: (id: string) => void;
+  onReproduce: (parent: AnimalSpawn, x: number, z: number, heading: number) => void;
   vitalsRef: React.RefObject<AnimalVitals>;
 }
 
@@ -60,6 +66,8 @@ export default function Animal({
   timeScale,
   selected,
   onSelect,
+  onDeath,
+  onReproduce,
   vitalsRef,
 }: AnimalProps) {
   const groupRef = useRef<Group>(null);
@@ -71,15 +79,23 @@ export default function Animal({
     heading: spawn.heading,
     headingTarget: spawn.heading,
     wanderTimer: 0,
-    hunger: initialNeed(Math.round((spawn.x + 10) * 7 + (spawn.z + 10) * 13)),
-    thirst: initialNeed(Math.round((spawn.z + 10) * 11 + spawn.heading * 5)),
+    hunger:
+      spawn.initialHunger ??
+      initialNeed(Math.round((spawn.x + 10) * 7 + (spawn.z + 10) * 13)),
+    thirst:
+      spawn.initialThirst ??
+      initialNeed(Math.round((spawn.z + 10) * 11 + spawn.heading * 5)),
     status: "Roaming" as AnimalStatus,
+    criticalTimer: 0,
+    wellFedTimer: 0,
+    hasDied: false,
   });
 
   useFrame((_, delta) => {
     const group = groupRef.current;
     if (!group) return;
     const m = motion.current;
+    if (m.hasDied) return;
     // Every mutation below uses dt, so Pause (0) freezes the whole simulation
     // and 4x accelerates it uniformly and frame-rate independently.
     const dt = delta * timeScale;
@@ -87,6 +103,33 @@ export default function Animal({
     if (dt > 0) {
       m.hunger = Math.min(NEED_MAX, m.hunger + species.hungerRate * dt);
       m.thirst = Math.min(NEED_MAX, m.thirst + species.thirstRate * dt);
+
+      // Death: a need pinned at NEED_MAX starts the critical timer; leaving
+      // the pinned state resets it.
+      if (m.hunger >= NEED_MAX || m.thirst >= NEED_MAX) {
+        m.criticalTimer += dt;
+        if (m.criticalTimer >= DEATH_AFTER_CRITICAL) {
+          m.hasDied = true;
+          onDeath(spawn.id);
+          return;
+        }
+      } else {
+        m.criticalTimer = 0;
+      }
+
+      // Reproduction: both needs kept low continuously; the population cap
+      // is enforced by the parent component.
+      if (m.hunger < WELL_FED_LEVEL && m.thirst < WELL_FED_LEVEL) {
+        m.wellFedTimer += dt;
+        if (m.wellFedTimer >= REPRODUCE_AFTER) {
+          m.wellFedTimer = 0;
+          m.hunger = Math.min(NEED_MAX, m.hunger + REPRODUCTION_NEED_PENALTY);
+          m.thirst = Math.min(NEED_MAX, m.thirst + REPRODUCTION_NEED_PENALTY);
+          onReproduce(spawn, m.x, m.z, m.heading);
+        }
+      } else {
+        m.wellFedTimer = 0;
+      }
 
       const atWater =
         distanceTo(m.x, m.z, WATER_SPOT) < WATER_SPOT.radius + CONSUME_MARGIN;
@@ -125,6 +168,12 @@ export default function Animal({
           m.wanderTimer = 2 + Math.random() * 3;
           m.headingTarget = m.heading + (Math.random() - 0.5) * Math.PI;
         }
+      }
+
+      // A pinned need overrides the status label so the panel telegraphs
+      // impending death (thirst wins ties); behavior above still runs.
+      if (m.criticalTimer > 0) {
+        m.status = m.thirst >= NEED_MAX ? "Dehydrated" : "Starving";
       }
 
       if (moving) {
