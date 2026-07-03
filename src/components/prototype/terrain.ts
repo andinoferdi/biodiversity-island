@@ -40,7 +40,7 @@ export const VEGETATION: VegetationSpec[] = [
   { kind: "tree", x: 5.5, y: 0.65, z: 2.4, scale: 1.15, rotY: 1.2 },
   { kind: "tree", x: 3.6, y: 0.43, z: 3.0, scale: 0.9, rotY: 2.1 },
   { kind: "tree", x: 5.0, y: 0.39, z: 4.0, scale: 1.05, rotY: 0.8 },
-  { kind: "tree", x: 2.4, y: 0.87, z: 4.4, scale: 1.1, rotY: 2.8 },
+  { kind: "tree", x: 2.4, y: 0.43, z: 4.4, scale: 1.1, rotY: 2.8 },
   { kind: "tree", x: -4.6, y: 0.43, z: -3.2, scale: 0.95, rotY: 1.7 },
   { kind: "tree", x: -5.4, y: 0.4, z: -1.2, scale: 1.2, rotY: 3.0 },
   { kind: "tree", x: -6.0, y: 0.38, z: 1.0, scale: 0.9, rotY: 0.2 },
@@ -51,6 +51,9 @@ export const VEGETATION: VegetationSpec[] = [
   { kind: "rock", x: -6.2, y: 0.99, z: 3.2, scale: 0.85, rotY: 4.1 },
   { kind: "log", x: 0.5, y: 0.35, z: 4.8, scale: 1.0, rotY: 1.6 },
   { kind: "log", x: 5.8, y: 0.43, z: -0.5, scale: 0.9, rotY: 4.4 },
+  { kind: "tree", x: 6.2, y: 0.43, z: -0.8, scale: 1.0, rotY: 1.1 },
+  { kind: "tree", x: -2.5, y: 0.43, z: 3.5, scale: 1.1, rotY: 0.5 },
+  { kind: "tree", x: 1.5, y: 0.43, z: 2.0, scale: 0.95, rotY: 2.3 },
 ];
 
 let terrainRoot: Object3D | null = null;

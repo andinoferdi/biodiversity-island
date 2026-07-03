@@ -31,7 +31,7 @@ function DynamicSun({ graphicQuality, timeScale }: { graphicQuality: GraphicQual
   useFrame((_state, delta) => {
     if (!lightRef.current) return;
     if (timeScale > 0) {
-      timeAccum.current += delta * timeScale * 0.06;
+      timeAccum.current += delta * timeScale * 0.04;
     }
 
     // Full circular orbit around the island at 30° elevation.

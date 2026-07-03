@@ -1,6 +1,8 @@
 "use client";
 
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
+import { useFrame } from "@react-three/fiber";
+import * as THREE from "three";
 import { Bvh, Clone, useGLTF } from "@react-three/drei";
 import { setTerrainRoot, TERRAIN_SCALE, TERRAIN_URL, TERRAIN_Y } from "./terrain";
 
@@ -22,13 +24,76 @@ useGLTF.preload(TERRAIN_URL);
 // On mount the scene registers itself with terrain.ts so those raycasts
 // (and the loading overlay in IslandScene) can find it.
 export function TerrainGLB() {
-  const { scene } = useGLTF(TERRAIN_URL);
+  const { scene, materials } = useGLTF(TERRAIN_URL) as any;
+  const uniforms = useMemo(() => ({ uTime: { value: 0 } }), []);
+
   useMemo(() => {
-    scene.traverse((object) => {
+    scene.traverse((object: any) => {
       object.castShadow = true;
       object.receiveShadow = true;
+
+      // Scale the bridge up (mat20). We modify the CPU geometry so that the
+      // BVH raycasting for animal physics matches the new visual size!
+      if (object.isMesh && object.geometry && object.material === materials.mat20) {
+        if (!object.geometry.userData.bridgeScaled) {
+          object.geometry.userData.bridgeScaled = true;
+          const posAttr = object.geometry.attributes.position;
+          const posArray = posAttr.array;
+          let modified = false;
+          for (let i = 0; i < posAttr.count; i++) {
+            const x = posArray[i * 3];
+            const y = posArray[i * 3 + 1];
+            const z = posArray[i * 3 + 2];
+            const dx = x - (-0.155);
+            const dy = y - (-0.10);
+            const dz = z - 0.158;
+            const dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
+            // The bridge fits perfectly within a 0.28 local radius.
+            if (dist < 0.28) {
+              posArray[i * 3] = -0.155 + dx * 1.5;
+              posArray[i * 3 + 1] = -0.10 + dy * 1.5;
+              posArray[i * 3 + 2] = 0.158 + dz * 1.5;
+              modified = true;
+            }
+          }
+          if (modified) {
+            posAttr.needsUpdate = true;
+            object.geometry.computeBoundingBox();
+            object.geometry.computeBoundingSphere();
+            // Recompute normals for accurate lighting on the scaled logs
+            object.geometry.computeVertexNormals();
+          }
+        }
+      }
     });
-  }, [scene]);
+
+    // Apply wave shader to water materials (mat3 and mat4)
+    const waterMats = [materials.mat3, materials.mat4].filter(Boolean);
+    waterMats.forEach((mat) => {
+      if (!mat.userData.shaderHooked) {
+        mat.userData.shaderHooked = true;
+        mat.onBeforeCompile = (shader: any) => {
+          shader.uniforms.uTime = uniforms.uTime;
+          shader.vertexShader = `
+            uniform float uTime;
+            ${shader.vertexShader}
+          `;
+          shader.vertexShader = shader.vertexShader.replace(
+            `#include <begin_vertex>`,
+            `
+            #include <begin_vertex>
+            // Procedural river wave
+            float wave = sin(position.x * 8.0 + uTime * 2.0) * 0.012 + 
+                         sin(position.z * 6.0 + uTime * 2.5) * 0.012;
+            transformed.y += wave;
+            `
+          );
+        };
+        mat.needsUpdate = true;
+      }
+    });
+  }, [scene, materials, uniforms]);
+
   useEffect(() => {
     // The transform props below were applied during render; make sure the
     // world matrices reflect them before the first raycast runs.
@@ -36,6 +101,12 @@ export function TerrainGLB() {
     setTerrainRoot(scene);
     return () => setTerrainRoot(null);
   }, [scene]);
+
+  useFrame((_, delta) => {
+    const dt = Math.min(delta, 0.1);
+    uniforms.uTime.value += dt;
+  });
+
   return (
     <Bvh firstHitOnly>
       <primitive
@@ -77,10 +148,45 @@ const ROCK_SCALE = 0.35;
 const LOG_SCALE = 0.15;
 
 export function Tree({ x, z, groundY, scale = 1, rotY = 0 }: ModelInstanceProps) {
-  const scene = useShadowedScene(TREE_URL);
+  const { nodes } = useGLTF(TREE_URL) as any;
+  const canopyRef = useRef<THREE.Group>(null);
+  
+  const phase = useMemo(() => Math.random() * Math.PI * 2, []);
+  const timeAccum = useRef(phase);
+
+  useFrame((_, delta) => {
+    if (!canopyRef.current) return;
+    const dt = Math.min(delta, 0.1);
+    timeAccum.current += dt;
+    const t = timeAccum.current;
+    
+    // Procedural wind swaying for the canopy
+    const swayX = (Math.sin(t * 1.5) + Math.sin(t * 2.7) * 0.5) * 0.04;
+    const swayZ = (Math.cos(t * 1.2) + Math.cos(t * 3.1) * 0.5) * 0.04;
+    
+    canopyRef.current.rotation.set(swayX, 0, swayZ);
+  });
+
   return (
     <group position={[x, groundY, z]} rotation={[0, rotY, 0]} scale={scale}>
-      <Clone object={scene} position={[0, TREE_LIFT, 0]} scale={TREE_SCALE} />
+      <group position={[0, TREE_LIFT, 0]} scale={TREE_SCALE}>
+        {/* Trunk (static) */}
+        <mesh 
+          castShadow 
+          receiveShadow 
+          geometry={nodes['Node-Mesh_1'].geometry} 
+          material={nodes['Node-Mesh_1'].material} 
+        />
+        {/* Canopy (swaying) */}
+        <group ref={canopyRef}>
+          <mesh 
+            castShadow 
+            receiveShadow 
+            geometry={nodes['Node-Mesh'].geometry} 
+            material={nodes['Node-Mesh'].material} 
+          />
+        </group>
+      </group>
     </group>
   );
 }
