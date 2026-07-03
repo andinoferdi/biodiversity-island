@@ -28,9 +28,82 @@ export function TerrainGLB() {
   const uniforms = useMemo(() => ({ uTime: { value: 0 } }), []);
 
   useMemo(() => {
+    let treeCenters: {x: number, z: number}[] = [];
+    
+    // First pass: discover spruce tree centers dynamically
+    scene.traverse((object: any) => {
+      if (object.isMesh && object.geometry && object.material === materials.mat9) {
+        if (!object.geometry.userData.treeCenters) {
+           const posAttr = object.geometry.attributes.position;
+           const posArray = posAttr.array;
+           const clusters: any[] = [];
+           for (let i = 0; i < posAttr.count; i++) {
+             const x = posArray[i * 3];
+             const y = posArray[i * 3 + 1];
+             const z = posArray[i * 3 + 2];
+             let found = false;
+             for (const c of clusters) {
+               const dx = c.x - x, dy = c.y - y, dz = c.z - z;
+               if (dx*dx + dy*dy + dz*dz < 0.09) { // 0.3 radius squared
+                 c.x = (c.x * c.count + x) / (c.count + 1);
+                 c.y = (c.y * c.count + y) / (c.count + 1);
+                 c.z = (c.z * c.count + z) / (c.count + 1);
+                 c.maxY = Math.max(c.maxY, y);
+                 c.count++;
+                 found = true;
+                 break;
+               }
+             }
+             if (!found) clusters.push({x, y, z, count: 1, maxY: y});
+           }
+           // Only spruce trees have a maxY > 0.1 (bushes are shorter)
+           object.geometry.userData.treeCenters = clusters.filter(c => c.maxY > 0.1);
+        }
+        treeCenters = object.geometry.userData.treeCenters;
+      }
+    });
+
     scene.traverse((object: any) => {
       object.castShadow = true;
       object.receiveShadow = true;
+
+      // Remove spruce trees (mat9 canopies, mat20 trunks) so we can replace them with tree.glb
+      if (object.isMesh && object.geometry && (object.material === materials.mat9 || object.material === materials.mat20)) {
+        if (!object.geometry.userData.spruceRemoved) {
+          object.geometry.userData.spruceRemoved = true;
+          const posAttr = object.geometry.attributes.position;
+          const posArray = posAttr.array;
+          let modified = false;
+          for (let i = 0; i < posAttr.count; i++) {
+            const x = posArray[i * 3];
+            const y = posArray[i * 3 + 1];
+            const z = posArray[i * 3 + 2];
+            for (const center of treeCenters) {
+               const dx = x - center.x;
+               const dz = z - center.z;
+               const dist2 = dx * dx + dz * dz;
+               if (dist2 < 0.15) { // 0.38 radius to catch all connected canopy vertices
+                 if (object.material === materials.mat9) {
+                   posArray[i*3] = center.x; posArray[i*3+1] = -5; posArray[i*3+2] = center.z;
+                   modified = true;
+                   break;
+                 } else if (object.material === materials.mat20 && y > -0.3 && dist2 < 0.02) {
+                   // trunks are thin, only remove mat20 within 0.14 radius so we don't hit the bridge
+                   posArray[i*3] = center.x; posArray[i*3+1] = -5; posArray[i*3+2] = center.z;
+                   modified = true;
+                   break;
+                 }
+               }
+            }
+          }
+          if (modified) {
+            posAttr.needsUpdate = true;
+            object.geometry.computeBoundingBox();
+            object.geometry.computeBoundingSphere();
+            object.geometry.computeVertexNormals();
+          }
+        }
+      }
 
       // Scale the bridge up (mat20). We modify the CPU geometry so that the
       // BVH raycasting for animal physics matches the new visual size!
@@ -92,6 +165,32 @@ export function TerrainGLB() {
         mat.needsUpdate = true;
       }
     });
+
+    // Apply wind sway shader to spruce trees/bushes (mat9)
+    if (materials.mat9 && !materials.mat9.userData.shaderHooked) {
+      materials.mat9.userData.shaderHooked = true;
+      materials.mat9.onBeforeCompile = (shader: any) => {
+        shader.uniforms.uTime = uniforms.uTime;
+        shader.vertexShader = `
+          uniform float uTime;
+          ${shader.vertexShader}
+        `;
+        shader.vertexShader = shader.vertexShader.replace(
+          `#include <begin_vertex>`,
+          `
+          #include <begin_vertex>
+          // Procedural wind sway for vegetation.
+          // Sway is stronger higher up; bottom of canopy is approx y=-0.11
+          float swayAmount = max(0.0, position.y + 0.2) * 0.02;
+          float swayX = sin(uTime * 1.5 + position.x * 2.0 + position.z) * swayAmount;
+          float swayZ = cos(uTime * 1.2 + position.z * 2.0 + position.x) * swayAmount;
+          transformed.x += swayX;
+          transformed.z += swayZ;
+          `
+        );
+      };
+      materials.mat9.needsUpdate = true;
+    }
   }, [scene, materials, uniforms]);
 
   useEffect(() => {
