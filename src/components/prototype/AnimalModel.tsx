@@ -3,7 +3,7 @@
 import { useMemo, useRef } from "react";
 import { useFrame } from "@react-three/fiber";
 import { Clone, useAnimations, useGLTF } from "@react-three/drei";
-import type { Group } from "three";
+import type { AnimationAction, Group } from "three";
 import { clone as cloneSkeleton } from "three/examples/jsm/utils/SkeletonUtils.js";
 import { SPECIES, type Species } from "./species";
 import type { AnimalStatus, TimeScale } from "./simulation";
@@ -21,9 +21,25 @@ export interface AnimalModelProps {
   statusRef: React.RefObject<AnimalStatus>;
 }
 
-// Maps the simulation status to one of the deer's animation clips.
-function clipFor(status: AnimalStatus): "Walk" | "Eating" {
-  return status === "Eating" || status === "Drinking" ? "Eating" : "Walk";
+// Maps the simulation status to one of the species' configured animation clips.
+function clipFor(
+  status: AnimalStatus,
+  species: Species,
+  actions: Record<string, AnimationAction | null>
+): string | null {
+  const anims = species.animations;
+  if (!anims) {
+    // Fallback: pick the first available animation if none configured
+    const available = Object.keys(actions);
+    return available.length > 0 ? available[0] : null;
+  }
+
+  if (status === "Eating" || status === "Drinking") {
+    return anims.eat || anims.idle || anims.walk;
+  }
+
+  // By default, the animal is moving (Roaming, Seeking)
+  return anims.walk || anims.idle || Object.keys(actions)[0] || null;
 }
 
 // The deer is the only skinned + animated model: <Clone> cannot duplicate
@@ -47,7 +63,9 @@ function AnimatedModel({ species, timeScale, statusRef }: AnimalModelProps) {
   // compares + AnimationAction method calls) so the deer follows the
   // simulation without React state: Pause freezes the pose, 4x speeds it up.
   useFrame(() => {
-    const clip = clipFor(statusRef.current);
+    const clip = clipFor(statusRef.current, species, actions);
+    if (!clip) return;
+
     if (clip !== activeClip.current) {
       const next = actions[clip];
       if (!next) return;

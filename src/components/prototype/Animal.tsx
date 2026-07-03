@@ -16,6 +16,7 @@ import {
   REPRODUCTION_NEED_PENALTY,
   SATISFIED_LEVEL,
   SEEK_THRESHOLD,
+  WALK_RADIUS,
   WELL_FED_LEVEL,
   type AnimalStatus,
   type AnimalVitals,
@@ -184,10 +185,10 @@ export default function Animal({
       let moving = true;
       if (atWater && m.thirst > SATISFIED_LEVEL && m.status === "Drinking") {
         m.thirst = Math.max(0, m.thirst - species.consumeRate * dt);
-        moving = false;
+        if (!species.neverStops) moving = false;
       } else if (atFood && m.hunger > SATISFIED_LEVEL && m.status === "Eating") {
         m.hunger = Math.max(0, m.hunger - species.consumeRate * dt);
-        moving = false;
+        if (!species.neverStops) moving = false;
       } else if (m.thirst > SEEK_THRESHOLD) {
         if (atWater) {
           m.status = "Drinking";
@@ -251,6 +252,19 @@ export default function Animal({
           }
         }
 
+        // Soft roam boundary: species with an extended roam radius (e.g. the
+        // hawk, which soars beyond the terrain mesh) steer back toward the
+        // center before a raycast miss would register as a world edge.
+        const effectiveRadius = species.roamRadius ?? WALK_RADIUS;
+        const distFromCenter = Math.hypot(m.x, m.z);
+        if (
+          !stranded &&
+          m.status === "Roaming" &&
+          distFromCenter > effectiveRadius * 0.85
+        ) {
+          m.headingTarget = Math.atan2(-m.x, -m.z);
+        }
+
         // Turn smoothly along the shortest arc toward the target heading.
         const diff = Math.atan2(
           Math.sin(m.headingTarget - m.heading),
@@ -279,6 +293,15 @@ export default function Animal({
           m.x = nextX;
           m.z = nextZ;
           here = ahead;
+        }
+
+        // Hard clamp as a final safety net (mainly for species like the
+        // hawk whose roamRadius extends past the terrain mesh) so nothing
+        // can drift arbitrarily far even if the raycast checks above miss.
+        const dist = Math.hypot(m.x, m.z);
+        if (dist > effectiveRadius) {
+          m.x *= effectiveRadius / dist;
+          m.z *= effectiveRadius / dist;
         }
       }
     }
