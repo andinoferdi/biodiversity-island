@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useRef } from "react";
+import { Suspense, useEffect, useRef } from "react";
 import { useFrame, type ThreeEvent } from "@react-three/fiber";
 import { MathUtils, type Group } from "three";
 import AnimalModel from "./AnimalModel";
@@ -94,6 +94,47 @@ export default function Animal({
   vitalsRef,
 }: AnimalProps) {
   const groupRef = useRef<Group>(null);
+
+  const keys = useRef({
+    w: false,
+    a: false,
+    s: false,
+    d: false,
+    ArrowUp: false,
+    ArrowLeft: false,
+    ArrowDown: false,
+    ArrowRight: false,
+  });
+
+  useEffect(() => {
+    if (!selected) return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key in keys.current) {
+        keys.current[e.key as keyof typeof keys.current] = true;
+      }
+    };
+
+    const handleKeyUp = (e: KeyboardEvent) => {
+      if (e.key in keys.current) {
+        keys.current[e.key as keyof typeof keys.current] = false;
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    window.addEventListener("keyup", handleKeyUp);
+
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+      window.removeEventListener("keyup", handleKeyUp);
+      
+      // Reset keys when deselected
+      Object.keys(keys.current).forEach(k => {
+        keys.current[k as keyof typeof keys.current] = false;
+      });
+    };
+  }, [selected]);
+
   // Read by AnimalModel every frame to pick the deer's animation clip.
   const statusRef = useRef<AnimalStatus>("Roaming");
   // Per-frame movement and needs state lives in a ref so animation never
@@ -106,6 +147,7 @@ export default function Animal({
     placed: false,
     heading: spawn.heading,
     headingTarget: spawn.heading,
+    visualHeading: spawn.heading,
     wanderTimer: 0,
     avoidanceTimer: 0,
     hunger:
@@ -169,165 +211,221 @@ export default function Animal({
         m.wellFedTimer = 0;
       }
 
-      const foodSpot = nearest(m.x, m.z, foodSpotsFor(species));
-      const atFood =
-        distanceTo(m.x, m.z, foodSpot) < foodSpot.radius + CONSUME_MARGIN;
+      if (selected) {
+        m.status = "Idle";
+        const k = keys.current;
+        let turn = 0;
+        let forward = 0;
 
-      // "At water": swimmers and waders drink wherever they float; land
-      // animals must stand next to the nearest river-bank point.
-      const waterEdge =
-        species.locomotion === "terrestrial"
-          ? nearestWaterEdge(m.x, m.z)
-          : null;
-      const atWater =
-        species.locomotion === "terrestrial"
-          ? waterEdge !== null &&
-            Math.hypot(waterEdge.x - m.x, waterEdge.z - m.z) < DRINK_RANGE
-          : here.water;
+        if (k.w || k.ArrowUp) forward = 1;
+        if (k.s || k.ArrowDown) forward = -1;
+        if (k.a || k.ArrowLeft) turn = 1;
+        if (k.d || k.ArrowRight) turn = -1;
 
-      let moving = true;
-      if (atWater && m.thirst > SATISFIED_LEVEL && m.status === "Drinking") {
-        m.thirst = Math.max(0, m.thirst - species.consumeRate * dt);
-        if (!species.neverStops) moving = false;
-      } else if (atFood && m.hunger > SATISFIED_LEVEL && m.status === "Eating") {
-        m.hunger = Math.max(0, m.hunger - species.consumeRate * dt);
-        if (!species.neverStops) moving = false;
-      } else if (m.thirst > SEEK_THRESHOLD) {
-        if (atWater) {
-          m.status = "Drinking";
-          moving = false;
-        } else {
-          m.status = "Seeking water";
-          // Head for the nearest river bank (ducks on land included; fish
-          // are always in water, so they never reach this branch).
-          const target = waterEdge ?? nearestWaterEdge(m.x, m.z);
-          if (target && m.avoidanceTimer <= 0) {
-            m.headingTarget = Math.atan2(target.x - m.x, target.z - m.z);
-          }
+        if (turn !== 0) {
+          m.heading += turn * species.turnSpeed * dt * 2.0;
+          m.headingTarget = m.heading;
         }
-      } else if (m.hunger > SEEK_THRESHOLD) {
-        if (atFood) {
-          m.status = "Eating";
-          moving = false;
-        } else {
-          m.status = "Seeking food";
-          if (m.avoidanceTimer <= 0) {
-            m.headingTarget = Math.atan2(foodSpot.x - m.x, foodSpot.z - m.z);
-          }
-        }
-      } else {
-        m.status = "Roaming";
-        // Pick a new wander direction every few seconds, validated against
-        // the terrain: the look-ahead point must be standable for this
-        // species (fish stay in the river, land animals stay off it).
-        m.wanderTimer -= dt;
-        if (m.wanderTimer <= 0) {
-          m.wanderTimer = 2 + Math.random() * 3;
-          for (let attempt = 0; attempt < WANDER_TRIES; attempt++) {
-            const spread = attempt === 0 ? Math.PI : Math.PI * 2;
-            const candidate = m.heading + (Math.random() - 0.5) * spread;
-            const look = sampleGround(
-              m.x + Math.sin(candidate) * WANDER_LOOKAHEAD,
-              m.z + Math.cos(candidate) * WANDER_LOOKAHEAD
-            );
-            if (look && canOccupy(species, look)) {
-              m.headingTarget = candidate;
-              break;
+
+        if (forward !== 0) {
+          m.status = "Roaming";
+          const speed = species.moveSpeed * dt * forward;
+          const nextX = m.x + Math.sin(m.heading) * speed;
+          const nextZ = m.z + Math.cos(m.heading) * speed;
+          const ahead = sampleGround(nextX, nextZ);
+
+          let hitVeg = false;
+          if (species.id !== "hawk") {
+            for (const v of VEGETATION) {
+              const r = species.selectionRadius * 0.5 + 0.35;
+              const nd = Math.hypot(v.x - nextX, v.z - nextZ);
+              if (nd < r) {
+                const cd = Math.hypot(v.x - m.x, v.z - m.z);
+                if (nd <= cd) {
+                  hitVeg = true;
+                  break;
+                }
+              }
             }
           }
-        }
-      }
 
-      // A pinned need overrides the status label so the panel telegraphs
-      // impending death (thirst wins ties); behavior above still runs.
-      if (m.criticalTimer > 0) {
-        m.status = m.thirst >= NEED_MAX ? "Dehydrated" : "Starving";
-      }
+          const stranded = !canOccupy(species, here);
+          const isWorldEdge = !ahead;
+          const isCliff = ahead && ahead.normalY < MIN_GROUND_NORMAL_Y;
+          const isBiomeBorder = ahead && !stranded && !canOccupy(species, ahead);
+          const isObstacle = isWorldEdge || isCliff || isBiomeBorder || hitVeg;
 
-      if (moving) {
-        // Self-rescue: standing somewhere invalid (e.g. offspring dropped on
-        // the wrong side of the bank) — head for the nearest bank, which is
-        // the shortest way back to legal ground for fish and land animals
-        // alike. Entry into the next cell is not blocked in this state.
-        const stranded = !canOccupy(species, here);
-        if (stranded) {
-          const edge = nearestWaterEdge(m.x, m.z);
-          if (edge) {
-            m.headingTarget = Math.atan2(edge.x - m.x, edge.z - m.z);
+          if (!isObstacle) {
+            m.x = nextX;
+            m.z = nextZ;
+            here = ahead;
           }
         }
 
-        // Soft roam boundary: species with an extended roam radius (e.g. the
-        // hawk, which soars beyond the terrain mesh) steer back toward the
-        // center before a raycast miss would register as a world edge.
-        const effectiveRadius = species.roamRadius ?? WALK_RADIUS;
-        const distFromCenter = Math.hypot(m.x, m.z);
-        if (
-          !stranded &&
-          m.status === "Roaming" &&
-          distFromCenter > effectiveRadius * 0.85
-        ) {
-          m.headingTarget = Math.atan2(-m.x, -m.z);
+        if (m.criticalTimer > 0) {
+          m.status = m.thirst >= NEED_MAX ? "Dehydrated" : "Starving";
         }
+      } else {
+        const foodSpot = nearest(m.x, m.z, foodSpotsFor(species));
+        const atFood =
+          distanceTo(m.x, m.z, foodSpot) < foodSpot.radius + CONSUME_MARGIN;
 
-        // Turn smoothly along the shortest arc toward the target heading.
-        const diff = Math.atan2(
-          Math.sin(m.headingTarget - m.heading),
-          Math.cos(m.headingTarget - m.heading)
-        );
-        m.heading += diff * Math.min(1, species.turnSpeed * dt);
+        // "At water": swimmers and waders drink wherever they float; land
+        // animals must stand next to the nearest river-bank point.
+        const waterEdge =
+          species.locomotion === "terrestrial"
+            ? nearestWaterEdge(m.x, m.z)
+            : null;
+        const atWater =
+          species.locomotion === "terrestrial"
+            ? waterEdge !== null &&
+              Math.hypot(waterEdge.x - m.x, waterEdge.z - m.z) < DRINK_RANGE
+            : here.water;
 
-        const nextX = m.x + Math.sin(m.heading) * species.moveSpeed * dt;
-        const nextZ = m.z + Math.cos(m.heading) * species.moveSpeed * dt;
-        const ahead = sampleGround(nextX, nextZ);
-
-        let hitVeg = false;
-        if (species.id !== "hawk") {
-          for (const v of VEGETATION) {
-            const r = species.selectionRadius * 0.5 + 0.35;
-            const nd = Math.hypot(v.x - nextX, v.z - nextZ);
-            if (nd < r) {
-              const cd = Math.hypot(v.x - m.x, v.z - m.z);
-              if (nd <= cd) {
-                hitVeg = true;
+        let moving = true;
+        if (atWater && m.thirst > SATISFIED_LEVEL && m.status === "Drinking") {
+          m.thirst = Math.max(0, m.thirst - species.consumeRate * dt);
+          if (!species.neverStops) moving = false;
+        } else if (atFood && m.hunger > SATISFIED_LEVEL && m.status === "Eating") {
+          m.hunger = Math.max(0, m.hunger - species.consumeRate * dt);
+          if (!species.neverStops) moving = false;
+        } else if (m.thirst > SEEK_THRESHOLD) {
+          if (atWater) {
+            m.status = "Drinking";
+            moving = false;
+          } else {
+            m.status = "Seeking water";
+            // Head for the nearest river bank (ducks on land included; fish
+            // are always in water, so they never reach this branch).
+            const target = waterEdge ?? nearestWaterEdge(m.x, m.z);
+            if (target && m.avoidanceTimer <= 0) {
+              m.headingTarget = Math.atan2(target.x - m.x, target.z - m.z);
+            }
+          }
+        } else if (m.hunger > SEEK_THRESHOLD) {
+          if (atFood) {
+            m.status = "Eating";
+            moving = false;
+          } else {
+            m.status = "Seeking food";
+            if (m.avoidanceTimer <= 0) {
+              m.headingTarget = Math.atan2(foodSpot.x - m.x, foodSpot.z - m.z);
+            }
+          }
+        } else {
+          m.status = "Roaming";
+          // Pick a new wander direction every few seconds, validated against
+          // the terrain: the look-ahead point must be standable for this
+          // species (fish stay in the river, land animals stay off it).
+          m.wanderTimer -= dt;
+          if (m.wanderTimer <= 0) {
+            m.wanderTimer = 2 + Math.random() * 3;
+            for (let attempt = 0; attempt < WANDER_TRIES; attempt++) {
+              const spread = attempt === 0 ? Math.PI : Math.PI * 2;
+              const candidate = m.heading + (Math.random() - 0.5) * spread;
+              const look = sampleGround(
+                m.x + Math.sin(candidate) * WANDER_LOOKAHEAD,
+                m.z + Math.cos(candidate) * WANDER_LOOKAHEAD
+              );
+              if (look && canOccupy(species, look)) {
+                m.headingTarget = candidate;
                 break;
               }
             }
           }
         }
 
-        const isWorldEdge = !ahead;
-        const isCliff = ahead && ahead.normalY < MIN_GROUND_NORMAL_Y;
-        const isBiomeBorder = ahead && !stranded && !canOccupy(species, ahead);
-        const isObstacle = isWorldEdge || isCliff || isBiomeBorder || hitVeg;
+        // A pinned need overrides the status label so the panel telegraphs
+        // impending death (thirst wins ties); behavior above still runs.
+        if (m.criticalTimer > 0) {
+          m.status = m.thirst >= NEED_MAX ? "Dehydrated" : "Starving";
+        }
 
-        if (isObstacle) {
-          const diffTarget = Math.atan2(
+        if (moving) {
+          // Self-rescue: standing somewhere invalid (e.g. offspring dropped on
+          // the wrong side of the bank) — head for the nearest bank, which is
+          // the shortest way back to legal ground for fish and land animals
+          // alike. Entry into the next cell is not blocked in this state.
+          const stranded = !canOccupy(species, here);
+          if (stranded) {
+            const edge = nearestWaterEdge(m.x, m.z);
+            if (edge) {
+              m.headingTarget = Math.atan2(edge.x - m.x, edge.z - m.z);
+            }
+          }
+
+          // Soft roam boundary: species with an extended roam radius (e.g. the
+          // hawk, which soars beyond the terrain mesh) steer back toward the
+          // center before a raycast miss would register as a world edge.
+          const effectiveRadius = species.roamRadius ?? WALK_RADIUS;
+          const distFromCenter = Math.hypot(m.x, m.z);
+          if (
+            !stranded &&
+            m.status === "Roaming" &&
+            distFromCenter > effectiveRadius * 0.85
+          ) {
+            m.headingTarget = Math.atan2(-m.x, -m.z);
+          }
+
+          // Turn smoothly along the shortest arc toward the target heading.
+          const diff = Math.atan2(
             Math.sin(m.headingTarget - m.heading),
             Math.cos(m.headingTarget - m.heading)
           );
-          
-          if (m.avoidanceTimer <= 0 || Math.abs(diffTarget) < 0.1) {
-            if (isWorldEdge) {
-              m.headingTarget = Math.atan2(-m.x, -m.z);
-            } else {
-              m.headingTarget = m.heading + Math.PI * (0.75 + Math.random() * 0.5);
-            }
-            m.avoidanceTimer = 2.5;
-          }
-        } else {
-          m.x = nextX;
-          m.z = nextZ;
-          here = ahead;
-        }
+          m.heading += diff * Math.min(1, species.turnSpeed * dt);
 
-        // Hard clamp as a final safety net (mainly for species like the
-        // hawk whose roamRadius extends past the terrain mesh) so nothing
-        // can drift arbitrarily far even if the raycast checks above miss.
-        const dist = Math.hypot(m.x, m.z);
-        if (dist > effectiveRadius) {
-          m.x *= effectiveRadius / dist;
-          m.z *= effectiveRadius / dist;
+          const nextX = m.x + Math.sin(m.heading) * species.moveSpeed * dt;
+          const nextZ = m.z + Math.cos(m.heading) * species.moveSpeed * dt;
+          const ahead = sampleGround(nextX, nextZ);
+
+          let hitVeg = false;
+          if (species.id !== "hawk") {
+            for (const v of VEGETATION) {
+              const r = species.selectionRadius * 0.5 + 0.35;
+              const nd = Math.hypot(v.x - nextX, v.z - nextZ);
+              if (nd < r) {
+                const cd = Math.hypot(v.x - m.x, v.z - m.z);
+                if (nd <= cd) {
+                  hitVeg = true;
+                  break;
+                }
+              }
+            }
+          }
+
+          const isWorldEdge = !ahead;
+          const isCliff = ahead && ahead.normalY < MIN_GROUND_NORMAL_Y;
+          const isBiomeBorder = ahead && !stranded && !canOccupy(species, ahead);
+          const isObstacle = isWorldEdge || isCliff || isBiomeBorder || hitVeg;
+
+          if (isObstacle) {
+            const diffTarget = Math.atan2(
+              Math.sin(m.headingTarget - m.heading),
+              Math.cos(m.headingTarget - m.heading)
+            );
+            
+            if (m.avoidanceTimer <= 0 || Math.abs(diffTarget) < 0.1) {
+              if (isWorldEdge) {
+                m.headingTarget = Math.atan2(-m.x, -m.z);
+              } else {
+                m.headingTarget = m.heading + Math.PI * (0.75 + Math.random() * 0.5);
+              }
+              m.avoidanceTimer = 2.5;
+            }
+          } else {
+            m.x = nextX;
+            m.z = nextZ;
+            here = ahead;
+          }
+
+          // Hard clamp as a final safety net (mainly for species like the
+          // hawk whose roamRadius extends past the terrain mesh) so nothing
+          // can drift arbitrarily far even if the raycast checks above miss.
+          const dist = Math.hypot(m.x, m.z);
+          if (dist > effectiveRadius) {
+            m.x *= effectiveRadius / dist;
+            m.z *= effectiveRadius / dist;
+          }
         }
       }
     }
@@ -339,7 +437,18 @@ export default function Animal({
       : here.y;
     m.placed = true;
     group.position.set(m.x, m.y, m.z);
-    group.rotation.y = m.heading;
+
+    let targetVisual = m.heading;
+    if (selected && (keys.current.s || keys.current.ArrowDown) && !keys.current.w && !keys.current.ArrowUp) {
+      targetVisual += Math.PI;
+    }
+    const diffVisual = Math.atan2(
+      Math.sin(targetVisual - m.visualHeading),
+      Math.cos(targetVisual - m.visualHeading)
+    );
+    m.visualHeading += diffVisual * Math.min(1, species.turnSpeed * delta * timeScale * 4.0);
+    
+    group.rotation.y = m.visualHeading;
     statusRef.current = m.status;
 
     // Only the selected animal feeds the UI panel, so skip the write

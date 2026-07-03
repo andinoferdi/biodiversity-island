@@ -1,6 +1,7 @@
 export type TimeScale = 0 | 1 | 4;
 
 export type AnimalStatus =
+  | "Idle"
   | "Roaming"
   | "Seeking water"
   | "Drinking"
