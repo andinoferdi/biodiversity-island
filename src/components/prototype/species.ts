@@ -8,6 +8,9 @@ export interface Species {
   scale: number;
   moveSpeed: number;
   turnSpeed: number;
+  hungerRate: number;
+  thirstRate: number;
+  consumeRate: number;
 }
 
 export interface AnimalSpawn {
@@ -30,6 +33,9 @@ export const SPECIES: Species[] = [
     scale: 1,
     moveSpeed: 1.2,
     turnSpeed: 2.2,
+    hungerRate: 1.4,
+    thirstRate: 1.8,
+    consumeRate: 20,
   },
   {
     id: "dune-hopper",
@@ -41,6 +47,9 @@ export const SPECIES: Species[] = [
     scale: 0.55,
     moveSpeed: 2.1,
     turnSpeed: 3.4,
+    hungerRate: 2.0,
+    thirstRate: 2.5,
+    consumeRate: 24,
   },
   {
     id: "highland-strider",
@@ -52,6 +61,9 @@ export const SPECIES: Species[] = [
     scale: 1.45,
     moveSpeed: 0.7,
     turnSpeed: 1.4,
+    hungerRate: 1.0,
+    thirstRate: 1.2,
+    consumeRate: 16,
   },
 ];
 

@@ -2,8 +2,14 @@
 
 import { Canvas } from "@react-three/fiber";
 import { MapControls } from "@react-three/drei";
-import Animal, { type AnimalPosition } from "./Animal";
+import Animal from "./Animal";
 import { ANIMAL_SPAWNS, getSpecies } from "./species";
+import {
+  RESOURCES,
+  type AnimalVitals,
+  type ResourceSpot,
+  type TimeScale,
+} from "./simulation";
 
 const GROUND_Y = 0.9;
 const WALK_RADIUS = 5.2;
@@ -64,6 +70,40 @@ function Island() {
   );
 }
 
+// Pond and food patches carry no pointer handlers so clicks on them still
+// reach the Canvas onPointerMissed deselect.
+function Resource({ spot }: { spot: ResourceSpot }) {
+  if (spot.kind === "water") {
+    return (
+      <mesh
+        rotation={[-Math.PI / 2, 0, 0]}
+        position={[spot.x, GROUND_Y + 0.01, spot.z]}
+      >
+        <circleGeometry args={[spot.radius, 32]} />
+        <meshStandardMaterial color="#3b82c4" />
+      </mesh>
+    );
+  }
+  return (
+    <group position={[spot.x, GROUND_Y, spot.z]}>
+      <mesh position={[0, 0.02, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+        <circleGeometry args={[spot.radius, 24]} />
+        <meshStandardMaterial color="#8fae3c" />
+      </mesh>
+      {[
+        [-0.25, 0.2],
+        [0.25, 0.05],
+        [0, -0.25],
+      ].map(([bx, bz]) => (
+        <mesh key={`${bx},${bz}`} castShadow position={[bx, 0.1, bz]}>
+          <sphereGeometry args={[0.12, 12, 12]} />
+          <meshStandardMaterial color="#c2452d" />
+        </mesh>
+      ))}
+    </group>
+  );
+}
+
 function Sea() {
   return (
     <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0, 0]}>
@@ -77,14 +117,16 @@ interface IslandSceneProps {
   selectedId: string | null;
   onSelect: (id: string) => void;
   onDeselect: () => void;
-  animalPositionRef: React.RefObject<AnimalPosition>;
+  timeScale: TimeScale;
+  vitalsRef: React.RefObject<AnimalVitals>;
 }
 
 export default function IslandScene({
   selectedId,
   onSelect,
   onDeselect,
-  animalPositionRef,
+  timeScale,
+  vitalsRef,
 }: IslandSceneProps) {
   return (
     <Canvas
@@ -115,6 +157,9 @@ export default function IslandScene({
       {TREES.map((tree) => (
         <Tree key={`${tree.x},${tree.z}`} {...tree} />
       ))}
+      {RESOURCES.map((spot) => (
+        <Resource key={spot.id} spot={spot} />
+      ))}
       {ANIMAL_SPAWNS.map((spawn) => (
         <Animal
           key={spawn.id}
@@ -122,9 +167,10 @@ export default function IslandScene({
           species={getSpecies(spawn.speciesId)}
           groundY={GROUND_Y}
           walkRadius={WALK_RADIUS}
+          timeScale={timeScale}
           selected={spawn.id === selectedId}
           onSelect={onSelect}
-          positionRef={animalPositionRef}
+          vitalsRef={vitalsRef}
         />
       ))}
       <MapControls
