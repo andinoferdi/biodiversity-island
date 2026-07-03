@@ -71,10 +71,10 @@ export interface ModelInstanceProps {
 // Per-model corrections (verified against the GLB bounding boxes and in the
 // browser): the tree's origin sits ~1.25 above its base, so it is lifted by
 // 1.25 × its base scale; rock and log already rest on their origin plane.
-const TREE_SCALE = 1.5;
+const TREE_SCALE = 0.5;
 const TREE_LIFT = 1.25 * TREE_SCALE;
-const ROCK_SCALE = 1.1;
-const LOG_SCALE = 0.45;
+const ROCK_SCALE = 0.35;
+const LOG_SCALE = 0.15;
 
 export function Tree({ x, z, groundY, scale = 1, rotY = 0 }: ModelInstanceProps) {
   const scene = useShadowedScene(TREE_URL);

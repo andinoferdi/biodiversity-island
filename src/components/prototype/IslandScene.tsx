@@ -10,6 +10,7 @@ import {
   subscribeTerrain,
   TERRAIN_THUMBNAIL_URL,
   TERRAIN_Y,
+  VEGETATION,
 } from "./terrain";
 import { getSpecies, type AnimalSpawn } from "./species";
 import {
@@ -18,39 +19,6 @@ import {
   type ResourceSpot,
   type TimeScale,
 } from "./simulation";
-
-interface VegetationSpec {
-  kind: "tree" | "rock" | "log";
-  x: number;
-  // Terrain height at (x, z), sampled offline from terrain.glb at the world
-  // transform in terrain.ts — vegetation is static, so no runtime raycasts.
-  y: number;
-  z: number;
-  scale: number;
-  rotY: number;
-}
-
-// Deterministic vegetation layout on the new terrain: trees cluster on the
-// eastern and western flats, rocks sit near the foothills, logs near the
-// banks. All positions verified on land, clear of the river, the northern
-// mountains, and the food spots in simulation.ts.
-const VEGETATION: VegetationSpec[] = [
-  { kind: "tree", x: 4.5, y: 0.43, z: 1.2, scale: 1.0, rotY: 0.4 },
-  { kind: "tree", x: 5.5, y: 0.65, z: 2.4, scale: 1.15, rotY: 1.2 },
-  { kind: "tree", x: 3.6, y: 0.43, z: 3.0, scale: 0.9, rotY: 2.1 },
-  { kind: "tree", x: 5.0, y: 0.39, z: 4.0, scale: 1.05, rotY: 0.8 },
-  { kind: "tree", x: 2.4, y: 0.87, z: 4.4, scale: 1.1, rotY: 2.8 },
-  { kind: "tree", x: -4.6, y: 0.43, z: -3.2, scale: 0.95, rotY: 1.7 },
-  { kind: "tree", x: -5.4, y: 0.4, z: -1.2, scale: 1.2, rotY: 3.0 },
-  { kind: "tree", x: -6.0, y: 0.38, z: 1.0, scale: 0.9, rotY: 0.2 },
-  { kind: "tree", x: -3.4, y: 0.43, z: -4.4, scale: 1.0, rotY: 1.4 },
-  { kind: "tree", x: 0.5, y: 0.43, z: -4.2, scale: 1.05, rotY: 0.6 },
-  { kind: "rock", x: -1.5, y: 0.43, z: -5.0, scale: 1.0, rotY: 0.9 },
-  { kind: "rock", x: 6.0, y: 0.59, z: -2.0, scale: 1.2, rotY: 2.0 },
-  { kind: "rock", x: -6.2, y: 0.99, z: 3.2, scale: 0.85, rotY: 4.1 },
-  { kind: "log", x: 0.5, y: 0.35, z: 4.8, scale: 1.0, rotY: 1.6 },
-  { kind: "log", x: 5.8, y: 0.43, z: -0.5, scale: 0.9, rotY: 4.4 },
-];
 
 const VEGETATION_COMPONENTS = { tree: Tree, rock: Rock, log: Log } as const;
 
@@ -113,7 +81,7 @@ function TerrainLoadingOverlay() {
   const ready = useSyncExternalStore(
     subscribeTerrain,
     isTerrainReady,
-    () => false
+    () => false,
   );
   const { progress } = useProgress();
   if (ready) return null;
@@ -135,7 +103,12 @@ interface IslandSceneProps {
   onSelect: (id: string) => void;
   onDeselect: () => void;
   onDeath: (id: string) => void;
-  onReproduce: (parent: AnimalSpawn, x: number, z: number, heading: number) => void;
+  onReproduce: (
+    parent: AnimalSpawn,
+    x: number,
+    z: number,
+    heading: number,
+  ) => void;
   timeScale: TimeScale;
   vitalsRef: React.RefObject<AnimalVitals>;
 }
@@ -155,7 +128,7 @@ export default function IslandScene({
       <Canvas
         orthographic
         shadows="percentage"
-        camera={{ position: [12, 14, 12], zoom: 38, near: 0.1, far: 120 }}
+        camera={{ position: [12, 14, 12], zoom: 114, near: 0.01, far: 120 }}
         onPointerMissed={onDeselect}
         fallback={
           <div className="flex h-full w-full items-center justify-center bg-slate-900 p-6 text-center text-slate-100">
@@ -202,8 +175,8 @@ export default function IslandScene({
         <MapControls
           enableDamping
           dampingFactor={0.08}
-          minZoom={18}
-          maxZoom={120}
+          minZoom={54}
+          maxZoom={360}
           maxPolarAngle={Math.PI / 2.4}
           target={[0, TERRAIN_Y, 0]}
         />

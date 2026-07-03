@@ -6,7 +6,7 @@ import { MathUtils, type Group } from "three";
 import AnimalModel from "./AnimalModel";
 import type { AnimalSpawn, Species } from "./species";
 import { biomeForHeight } from "./biomes";
-import { nearestWaterEdge, sampleGround, type GroundSample } from "./terrain";
+import { nearestWaterEdge, sampleGround, type GroundSample, VEGETATION } from "./terrain";
 import {
   DEATH_AFTER_CRITICAL,
   FOOD_SPOTS,
@@ -107,6 +107,7 @@ export default function Animal({
     heading: spawn.heading,
     headingTarget: spawn.heading,
     wanderTimer: 0,
+    avoidanceTimer: 0,
     hunger:
       spawn.initialHunger ??
       initialNeed(Math.round((spawn.x + 10) * 7 + (spawn.z + 10) * 13)),
@@ -136,6 +137,8 @@ export default function Animal({
     const dt = delta * timeScale;
 
     if (dt > 0) {
+      m.avoidanceTimer = Math.max(0, m.avoidanceTimer - dt);
+
       m.hunger = Math.min(NEED_MAX, m.hunger + species.hungerRate * dt);
       m.thirst = Math.min(NEED_MAX, m.thirst + species.thirstRate * dt);
 
@@ -198,7 +201,7 @@ export default function Animal({
           // Head for the nearest river bank (ducks on land included; fish
           // are always in water, so they never reach this branch).
           const target = waterEdge ?? nearestWaterEdge(m.x, m.z);
-          if (target) {
+          if (target && m.avoidanceTimer <= 0) {
             m.headingTarget = Math.atan2(target.x - m.x, target.z - m.z);
           }
         }
@@ -208,7 +211,9 @@ export default function Animal({
           moving = false;
         } else {
           m.status = "Seeking food";
-          m.headingTarget = Math.atan2(foodSpot.x - m.x, foodSpot.z - m.z);
+          if (m.avoidanceTimer <= 0) {
+            m.headingTarget = Math.atan2(foodSpot.x - m.x, foodSpot.z - m.z);
+          }
         }
       } else {
         m.status = "Roaming";
@@ -276,19 +281,40 @@ export default function Animal({
         const nextZ = m.z + Math.cos(m.heading) * species.moveSpeed * dt;
         const ahead = sampleGround(nextX, nextZ);
 
-        if (!ahead) {
-          // Raycast miss: walked past the edge of the terrain mesh — the
-          // world boundary. Turn back toward the island center.
-          m.headingTarget = Math.atan2(-m.x, -m.z);
-        } else if (ahead.normalY < MIN_GROUND_NORMAL_Y) {
-          // Steep slope ahead: treat the cliff as a wall and turn away.
-          m.headingTarget =
-            m.heading + Math.PI * (0.75 + Math.random() * 0.5);
-        } else if (!stranded && !canOccupy(species, ahead)) {
-          // Biome border: fish bounce off the banks, land animals bounce
-          // off the water line.
-          m.headingTarget =
-            m.heading + Math.PI * (0.75 + Math.random() * 0.5);
+        let hitVeg = false;
+        if (species.id !== "hawk") {
+          for (const v of VEGETATION) {
+            const r = species.selectionRadius * 0.5 + 0.35;
+            const nd = Math.hypot(v.x - nextX, v.z - nextZ);
+            if (nd < r) {
+              const cd = Math.hypot(v.x - m.x, v.z - m.z);
+              if (nd <= cd) {
+                hitVeg = true;
+                break;
+              }
+            }
+          }
+        }
+
+        const isWorldEdge = !ahead;
+        const isCliff = ahead && ahead.normalY < MIN_GROUND_NORMAL_Y;
+        const isBiomeBorder = ahead && !stranded && !canOccupy(species, ahead);
+        const isObstacle = isWorldEdge || isCliff || isBiomeBorder || hitVeg;
+
+        if (isObstacle) {
+          const diffTarget = Math.atan2(
+            Math.sin(m.headingTarget - m.heading),
+            Math.cos(m.headingTarget - m.heading)
+          );
+          
+          if (m.avoidanceTimer <= 0 || Math.abs(diffTarget) < 0.1) {
+            if (isWorldEdge) {
+              m.headingTarget = Math.atan2(-m.x, -m.z);
+            } else {
+              m.headingTarget = m.heading + Math.PI * (0.75 + Math.random() * 0.5);
+            }
+            m.avoidanceTimer = 2.5;
+          }
         } else {
           m.x = nextX;
           m.z = nextZ;
