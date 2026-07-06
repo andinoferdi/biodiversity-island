@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef } from "react";
 import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 import { Bvh, Clone, useGLTF } from "@react-three/drei";
+import * as BufferGeometryUtils from 'three/addons/utils/BufferGeometryUtils.js';
 import { setTerrainRoot, TERRAIN_SCALE, TERRAIN_URL, TERRAIN_Y } from "./terrain";
 
 // First GLB pipeline of the project: the three small environment models are
@@ -17,6 +18,15 @@ useGLTF.preload(TREE_URL);
 useGLTF.preload(ROCK_URL);
 useGLTF.preload(LOG_URL);
 useGLTF.preload(TERRAIN_URL);
+
+const APPLE_TREE_URL = "/assets/environment/apple_tree/apple_tree.glb";
+const APPLE_URL = "/assets/environment/apple/apple.glb";
+const GRASS_URL = "/assets/environment/grass/grass.glb";
+
+useGLTF.preload(APPLE_TREE_URL);
+useGLTF.preload(APPLE_URL);
+useGLTF.preload(GRASS_URL);
+
 
 // The island landmass: a single low-poly GLB with hills, cliffs, a river,
 // and its water surfaces. <Bvh> builds a bounds tree for every mesh inside,
@@ -305,5 +315,52 @@ export function Log({ x, z, groundY, scale = 1, rotY = 0 }: ModelInstanceProps) 
     <group position={[x, groundY, z]} rotation={[0, rotY, 0]} scale={scale}>
       <Clone object={scene} scale={LOG_SCALE} />
     </group>
+  );
+}
+
+export function AppleTreeModel({ scale = 1 }: { scale?: number }) {
+  const scene = useShadowedScene(APPLE_TREE_URL);
+  return <Clone object={scene} scale={scale} />;
+}
+
+export function AppleModel({ scale = 1 }: { scale?: number }) {
+  const scene = useShadowedScene(APPLE_URL);
+  return <Clone object={scene} scale={scale} />;
+}
+
+export function GrassModel({ scale = 1 }: { scale?: number }) {
+  const { scene } = useGLTF(GRASS_URL);
+  
+  const { geometry, material } = useMemo(() => {
+    scene.updateMatrixWorld(true);
+    const geometries: THREE.BufferGeometry[] = [];
+    let mat: THREE.Material | null = null;
+    
+    scene.traverse((child: any) => {
+      if (child.isMesh && child.geometry) {
+        if (!mat) mat = child.material;
+        const geom = child.geometry.clone();
+        geom.applyMatrix4(child.matrixWorld);
+        geometries.push(geom);
+      }
+    });
+    
+    const mergedGeometry = geometries.length > 0 
+      ? BufferGeometryUtils.mergeGeometries(geometries, false) 
+      : new THREE.BufferGeometry();
+      
+    return { geometry: mergedGeometry, material: mat };
+  }, [scene]);
+
+  if (!material) return null;
+
+  return (
+    <mesh 
+      geometry={geometry} 
+      material={material} 
+      scale={scale} 
+      castShadow 
+      receiveShadow 
+    />
   );
 }

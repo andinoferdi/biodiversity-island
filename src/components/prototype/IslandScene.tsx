@@ -16,7 +16,7 @@ import {
 } from "@react-three/postprocessing";
 import * as THREE from "three";
 import Animal from "./Animal";
-import { Log, Rock, TerrainGLB, Tree } from "./EnvironmentModels";
+import { Log, Rock, TerrainGLB, Tree, AppleTreeModel, AppleModel, GrassModel } from "./EnvironmentModels";
 import {
   isTerrainReady,
   subscribeTerrain,
@@ -441,28 +441,36 @@ function Vegetation() {
 function Resource({ spot }: { spot: ResourceSpot }) {
   return (
     <group position={[spot.x, spot.y, spot.z]}>
-      <mesh
-        position={[0, 0.02, 0]}
-        rotation={[-Math.PI / 2, 0, 0]}
-        receiveShadow
-      >
-        <circleGeometry args={[spot.radius, 24]} />
-        <meshStandardMaterial color="#8fae3c" />
-      </mesh>
+      <AppleTreeModel scale={0.05} />
+      
+      {/* Grass patches around the tree base */}
       {[
-        [-0.25, 0.2],
-        [0.25, 0.05],
-        [0, -0.25],
-      ].map(([bx, bz]) => (
-        <mesh
-          key={`${bx},${bz}`}
-          castShadow
-          receiveShadow
-          position={[bx, 0.1, bz]}
+        [0.15, 0.15, 0],
+        [-0.15, 0.25, 1.2],
+        [0.25, -0.15, 2.5],
+        [-0.2, -0.25, 3.8],
+        [0.0, -0.35, 5.1],
+        [-0.35, 0.0, 0.8],
+      ].map(([gx, gz, rotY], i) => (
+        <group key={`grass-${i}`} position={[gx, 0.0, gz]} rotation={[0, rotY, 0]}>
+          <GrassModel scale={0.4} />
+        </group>
+      ))}
+      {[
+        [-0.2, 0.2, 0.5],
+        [0.2, 0.1, 1.2],
+        [-0.1, -0.2, 2.5],
+        [0.25, -0.15, 0.2],
+        [-0.25, -0.1, 4.0],
+        [0.05, 0.25, 5.1],
+      ].map(([bx, bz, rotY], i) => (
+        <group
+          key={i}
+          position={[bx, 0.01, bz]}
+          rotation={[0, rotY, 0]}
         >
-          <sphereGeometry args={[0.12, 12, 12]} />
-          <meshStandardMaterial color="#c2452d" />
-        </mesh>
+          <AppleModel scale={0.3} />
+        </group>
       ))}
     </group>
   );
@@ -588,14 +596,14 @@ export default function IslandScene({
         <Suspense fallback={null}>
           <TerrainGLB />
           <Vegetation />
+          {RESOURCES.map((spot) => (
+            <Resource key={spot.id} spot={spot} />
+          ))}
         </Suspense>
         {isCloudy && (
           <RealisticClouds isRaining={isRaining} timeScale={timeScale} />
         )}
         <RealisticRainSystem isRaining={isRaining} timeScale={timeScale} />
-        {RESOURCES.map((spot) => (
-          <Resource key={spot.id} spot={spot} />
-        ))}
         {population.map((spawn) => (
           <Animal
             key={spawn.id}

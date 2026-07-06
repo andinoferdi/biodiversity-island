@@ -39,6 +39,7 @@ export const MIN_GROUND_NORMAL_Y = 0.6;
 // per quadrant) plus one in the River for the fish. Water is no longer a
 // resource spot — drinking targets the river banks found by terrain.ts.
 export const RESOURCES: ResourceSpot[] = [
+  { id: "food-north-east", kind: "food", biomeId: "land", x: 3.0, y: 0.41, z: 0, radius: 0.7 },
   { id: "food-east", kind: "food", biomeId: "land", x: 4.6, y: 0.41, z: 2.2, radius: 0.7 },
   { id: "food-west", kind: "food", biomeId: "land", x: -4.8, y: 0.43, z: -2.4, radius: 0.7 },
   { id: "food-south", kind: "food", biomeId: "land", x: -1.6, y: 0.38, z: 4.2, radius: 0.7 },
