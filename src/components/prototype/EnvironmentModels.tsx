@@ -35,7 +35,16 @@ useGLTF.preload(GRASS_URL);
 // (and the loading overlay in IslandScene) can find it.
 export function TerrainGLB() {
   const { scene, materials } = useGLTF(TERRAIN_URL) as any;
-  const uniforms = useMemo(() => ({ uTime: { value: 0 } }), []);
+  const uniforms = useMemo(() => {
+    const mat = materials.mat3 || materials.mat4 || materials.mat9;
+    if (mat) {
+      if (!mat.userData.uTime) {
+        mat.userData.uTime = { value: 0 };
+      }
+      return { uTime: mat.userData.uTime };
+    }
+    return { uTime: { value: 0 } };
+  }, [materials]);
 
   useMemo(() => {
     let treeCenters: {x: number, z: number}[] = [];
