@@ -33,6 +33,7 @@ interface AnimalProps {
   onDeath: (id: string) => void;
   onReproduce: (parent: AnimalSpawn, x: number, z: number, heading: number) => void;
   vitalsRef: React.RefObject<AnimalVitals>;
+  isRaining: boolean;
 }
 
 // Extra reach beyond a spot's visual radius that counts as "at the resource".
@@ -92,6 +93,7 @@ export default function Animal({
   onDeath,
   onReproduce,
   vitalsRef,
+  isRaining,
 }: AnimalProps) {
   const groupRef = useRef<Group>(null);
 
@@ -185,7 +187,12 @@ export default function Animal({
       m.avoidanceTimer = Math.max(0, m.avoidanceTimer - dt);
 
       m.hunger = Math.min(NEED_MAX, m.hunger + species.hungerRate * dt);
-      m.thirst = Math.min(NEED_MAX, m.thirst + species.thirstRate * dt);
+      
+      if (isRaining) {
+        m.thirst = Math.max(0, m.thirst - species.consumeRate * 0.5 * dt);
+      } else {
+        m.thirst = Math.min(NEED_MAX, m.thirst + species.thirstRate * dt);
+      }
 
       // Death: a need pinned at NEED_MAX starts the critical timer; leaving
       // the pinned state resets it.

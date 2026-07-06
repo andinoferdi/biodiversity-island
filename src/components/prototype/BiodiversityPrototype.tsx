@@ -87,6 +87,8 @@ export default function BiodiversityPrototype() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [timeScale, setTimeScale] = useState<TimeScale>(1);
   const [graphicQuality, setGraphicQuality] = useState<GraphicQuality>("high");
+  const [isRaining, setIsRaining] = useState(false);
+  const [isCloudy, setIsCloudy] = useState(true);
   const [vitals, setVitals] = useState<AnimalVitals>(INITIAL_VITALS);
   const [population, setPopulation] = useState<AnimalSpawn[]>(ANIMAL_SPAWNS);
   const vitalsRef = useRef<AnimalVitals>({ ...INITIAL_VITALS });
@@ -166,6 +168,8 @@ export default function BiodiversityPrototype() {
         timeScale={timeScale}
         vitalsRef={vitalsRef}
         graphicQuality={graphicQuality}
+        isRaining={isRaining}
+        isCloudy={isCloudy}
       />
 
       <div className="absolute left-4 top-4 max-w-xs rounded-lg bg-slate-950/70 p-4 text-slate-100 backdrop-blur-sm">
@@ -207,6 +211,32 @@ export default function BiodiversityPrototype() {
               {label}
             </button>
           ))}
+        </div>
+        <div className="mt-2 flex gap-1" role="group" aria-label="Weather">
+          <button
+            type="button"
+            aria-pressed={isRaining}
+            onClick={() => setIsRaining(!isRaining)}
+            className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
+              isRaining
+                ? "bg-blue-500 text-white"
+                : "bg-slate-800 text-slate-300 hover:bg-slate-700"
+            }`}
+          >
+            Rain {isRaining ? "On" : "Off"}
+          </button>
+          <button
+            type="button"
+            aria-pressed={isCloudy}
+            onClick={() => setIsCloudy(!isCloudy)}
+            className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
+              isCloudy
+                ? "bg-slate-400 text-slate-900"
+                : "bg-slate-800 text-slate-300 hover:bg-slate-700"
+            }`}
+          >
+            Clouds {isCloudy ? "On" : "Off"}
+          </button>
         </div>
         <ul className="mt-2 space-y-1 text-sm text-slate-300">
           <li>Drag to rotate, right-drag to pan</li>
