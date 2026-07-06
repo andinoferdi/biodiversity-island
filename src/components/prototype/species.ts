@@ -1,7 +1,7 @@
 // How a species relates to the river: aquatic animals may only occupy water,
 // amphibians roam water and land freely, terrestrial animals stay on land
 // and only touch the river's edge when drinking.
-export type Locomotion = "aquatic" | "amphibian" | "terrestrial";
+export type Locomotion = "aquatic" | "amphibian" | "terrestrial" | "aerial";
 
 export interface Species {
   id: string;
@@ -37,6 +37,10 @@ export interface Species {
   hungerRate: number;
   thirstRate: number;
   consumeRate: number;
+  // Real AI parameters
+  predatorOf?: string[];
+  fov?: number; // Field of view in radians (default ~2.0)
+  sightDistance?: number; // How far they can see (default ~10)
 }
 
 export interface AnimalSpawn {
@@ -66,17 +70,19 @@ export const SPECIES: Species[] = [
     animated: true,
     animations: { walk: "Walk", eat: "Eating" },
     selectionRadius: 0.33,
-    moveSpeed: 1,
+    moveSpeed: 0.35,
     turnSpeed: 2.2,
     hungerRate: 1.4,
     thirstRate: 1.8,
     consumeRate: 20,
+    fov: 2.5, // Deer have wide peripheral vision
+    sightDistance: 12,
   },
   {
     id: "hawk",
     name: "Hawk",
     habitat: "Forest canopy",
-    locomotion: "terrestrial",
+    locomotion: "aerial",
     diet: "Seeds & berries",
     modelUrl: "/assets/animal/hawk/hawk.glb",
     modelScale: 0.1,
@@ -87,11 +93,14 @@ export const SPECIES: Species[] = [
     neverStops: true,
     roamRadius: 12,
     selectionRadius: 0.2,
-    moveSpeed: 1.2,
+    moveSpeed: 0.6,
     turnSpeed: 3.4,
     hungerRate: 2.0,
     thirstRate: 2.4,
     consumeRate: 24,
+    predatorOf: ["rabbit", "duck", "fish"],
+    fov: 1.8, // Hawks have focused forward vision
+    sightDistance: 20, // Hawks see very far
   },
   {
     id: "horse",
@@ -106,11 +115,13 @@ export const SPECIES: Species[] = [
     animated: true,
     animations: { walk: "Walk", eat: "Eating" },
     selectionRadius: 0.6,
-    moveSpeed: 0.7,
+    moveSpeed: 0.35,
     turnSpeed: 1.4,
     hungerRate: 1.0,
     thirstRate: 1.2,
     consumeRate: 16,
+    fov: 2.5,
+    sightDistance: 14,
   },
   {
     id: "duck",
@@ -124,11 +135,13 @@ export const SPECIES: Species[] = [
     modelRotY: 0,
     animated: false,
     selectionRadius: 0.23,
-    moveSpeed: 0.7,
+    moveSpeed: 0.35,
     turnSpeed: 1.0,
     hungerRate: 1.8,
     thirstRate: 2.2,
     consumeRate: 22,
+    fov: 2.2,
+    sightDistance: 8,
   },
   {
     id: "rabbit",
@@ -143,11 +156,13 @@ export const SPECIES: Species[] = [
     animated: true,
     animations: { walk: "Bunny|Bunny_walk", idle: "Bunny|Bunny_idle" },
     selectionRadius: 0.3,
-    moveSpeed: 0.5,
+    moveSpeed: 0.25,
     turnSpeed: 1.6,
     hungerRate: 0.9,
     thirstRate: 1.1,
     consumeRate: 14,
+    fov: 2.8, // Rabbits can see almost behind them
+    sightDistance: 10,
   },
   {
     id: "fish",
@@ -162,11 +177,13 @@ export const SPECIES: Species[] = [
     modelRotY: 0,
     animated: false,
     selectionRadius: 0.2,
-    moveSpeed: 1.9,
+    moveSpeed: 0.95,
     turnSpeed: 3.6,
     hungerRate: 2.2,
     thirstRate: 1.6,
     consumeRate: 24,
+    fov: 2.0,
+    sightDistance: 6,
   },
 ];
 

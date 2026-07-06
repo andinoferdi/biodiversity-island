@@ -8,7 +8,9 @@ export type AnimalStatus =
   | "Seeking food"
   | "Eating"
   | "Starving"
-  | "Dehydrated";
+  | "Dehydrated"
+  | "Fleeing"
+  | "Hunting";
 
 import type { BiomeId } from "./biomes";
 
@@ -85,3 +87,14 @@ export interface AnimalVitals {
   // Live biome name at the animal's position ("River" | "Land").
   biome: string;
 }
+
+export interface AnimalState {
+  x: number;
+  z: number;
+  speciesId: string;
+  status: AnimalStatus;
+  heading: number;
+}
+
+export const liveAnimals = new Map<string, AnimalState>();
+

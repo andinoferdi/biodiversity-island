@@ -37,8 +37,11 @@ function clipFor(
   if (status === "Eating" || status === "Drinking") {
     return anims.eat || anims.idle || anims.walk;
   }
+  if (status === "Idle") {
+    return anims.idle || anims.walk;
+  }
 
-  // By default, the animal is moving (Roaming, Seeking)
+  // By default, the animal is moving (Roaming, Seeking, Fleeing)
   return anims.walk || anims.idle || Object.keys(actions)[0] || null;
 }
 
@@ -74,7 +77,10 @@ function AnimatedModel({ species, timeScale, statusRef }: AnimalModelProps) {
       prev?.fadeOut(0.2);
       activeClip.current = clip;
     }
-    actions[clip]?.setEffectiveTimeScale(timeScale);
+    
+    // Play animations faster if the animal is fleeing
+    const speedMultiplier = statusRef.current === "Fleeing" ? 2.5 : 1.0;
+    actions[clip]?.setEffectiveTimeScale(timeScale * speedMultiplier);
   });
 
   return (

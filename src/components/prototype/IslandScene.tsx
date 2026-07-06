@@ -7,7 +7,8 @@ import {
   useMemo,
   useEffect,
 } from "react";
-import { Canvas, useFrame } from "@react-three/fiber";
+import * as React from "react";
+import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { MapControls, useProgress } from "@react-three/drei";
 import {
   EffectComposer,
@@ -32,6 +33,32 @@ import {
   type ResourceSpot,
   type TimeScale,
 } from "./simulation";
+
+function CustomMapControls({ isPOV }: { isPOV: boolean }) {
+  const camera = useThree((state) => state.camera);
+  const [orthoCam, setOrthoCam] = React.useState<THREE.Camera | null>(null);
+
+  React.useEffect(() => {
+    if (camera.type === "OrthographicCamera") {
+      setOrthoCam(camera);
+    }
+  }, [camera]);
+
+  if (!orthoCam) return null;
+
+  return (
+    <MapControls
+      camera={orthoCam}
+      enabled={!isPOV}
+      enableDamping
+      dampingFactor={0.08}
+      minZoom={54}
+      maxZoom={360}
+      maxPolarAngle={Math.PI / 2.4}
+      target={[0, TERRAIN_Y, 0]}
+    />
+  );
+}
 
 const VEGETATION_COMPONENTS = { tree: Tree, rock: Rock, log: Log } as const;
 
@@ -526,6 +553,7 @@ interface IslandSceneProps {
   graphicQuality: GraphicQuality;
   isRaining: boolean;
   isCloudy: boolean;
+  isPOV: boolean;
 }
 
 export default function IslandScene({
@@ -540,6 +568,7 @@ export default function IslandScene({
   graphicQuality,
   isRaining,
   isCloudy,
+  isPOV,
 }: IslandSceneProps) {
   return (
     <div className="relative h-full w-full">
@@ -616,16 +645,10 @@ export default function IslandScene({
             onReproduce={onReproduce}
             vitalsRef={vitalsRef}
             isRaining={isRaining}
+            isPOV={isPOV && spawn.id === selectedId}
           />
         ))}
-        <MapControls
-          enableDamping
-          dampingFactor={0.08}
-          minZoom={54}
-          maxZoom={360}
-          maxPolarAngle={Math.PI / 2.4}
-          target={[0, TERRAIN_Y, 0]}
-        />
+        <CustomMapControls isPOV={isPOV} />
         {graphicQuality !== "low" && (
           <EffectComposer multisampling={graphicQuality === "high" ? 8 : 4}>
             <Bloom

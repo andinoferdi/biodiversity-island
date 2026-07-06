@@ -133,13 +133,37 @@ export function sampleGround(x: number, z: number): GroundSample | null {
   rayOrigin.set(x, RAY_HEIGHT, z);
   raycaster.set(rayOrigin, RAY_DOWN);
   const hits = raycaster.intersectObject(terrainRoot, true);
+  if (hits.length === 0) return null;
+
   const hit = hits[0];
-  if (!hit) return null;
-  // The terrain transform is uniform scale + translation only, so the
-  // geometry normal's Y equals the world normal's Y.
+  const normalY = hit.face?.normal.y ?? 1;
+
+  // If the surface is steep (cliff, tree, or bush)
+  if (normalY < MIN_GROUND_NORMAL_Y) {
+    // Try to "see through" small hollow objects like bushes by casting again from just below the hit.
+    rayOrigin.set(x, hit.point.y - 0.05, z);
+    raycaster.set(rayOrigin, RAY_DOWN);
+    const hits2 = raycaster.intersectObject(terrainRoot, true);
+    if (hits2.length > 0) {
+      const hit2 = hits2[0];
+      const normalY2 = hit2.face?.normal.y ?? 1;
+      
+      // If we found flat ground within 2.5 units below the steep hit, it was a bush!
+      // Return the flat ground so animals can walk through it.
+      if (normalY2 >= MIN_GROUND_NORMAL_Y && hit.point.y - hit2.point.y < 2.5) {
+        return {
+          y: hit2.point.y,
+          normalY: normalY2,
+          water: hit2.point.y <= WATER_LEVEL,
+        };
+      }
+    }
+  }
+
+  // Otherwise, return the original hit (valid ground or impenetrable mountain)
   return {
     y: hit.point.y,
-    normalY: hit.face?.normal.y ?? 1,
+    normalY,
     water: hit.point.y <= WATER_LEVEL,
   };
 }

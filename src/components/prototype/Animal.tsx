@@ -2,9 +2,10 @@
 
 import { Suspense, useEffect, useRef } from "react";
 import { useFrame, type ThreeEvent } from "@react-three/fiber";
+import { PerspectiveCamera } from "@react-three/drei";
 import { MathUtils, type Group } from "three";
 import AnimalModel from "./AnimalModel";
-import type { AnimalSpawn, Species } from "./species";
+import { getSpecies, type AnimalSpawn, type Species } from "./species";
 import { biomeForHeight } from "./biomes";
 import { nearestWaterEdge, sampleGround, type GroundSample, VEGETATION } from "./terrain";
 import {
@@ -18,6 +19,7 @@ import {
   SEEK_THRESHOLD,
   WALK_RADIUS,
   WELL_FED_LEVEL,
+  liveAnimals,
   type AnimalStatus,
   type AnimalVitals,
   type ResourceSpot,
@@ -34,6 +36,7 @@ interface AnimalProps {
   onReproduce: (parent: AnimalSpawn, x: number, z: number, heading: number) => void;
   vitalsRef: React.RefObject<AnimalVitals>;
   isRaining: boolean;
+  isPOV: boolean;
 }
 
 // Extra reach beyond a spot's visual radius that counts as "at the resource".
@@ -84,6 +87,25 @@ function initialNeed(seed: number) {
   return 12 + ((seed * 37) % 33);
 }
 
+// Helper to get realistic sensory params
+function getSightParams(species: Species) {
+  return { fov: species.fov ?? 2.0, sightDist: species.sightDistance ?? 10 };
+}
+
+function canSee(meX: number, meZ: number, meHeading: number, targetX: number, targetZ: number, species: Species): boolean {
+  const { fov, sightDist } = getSightParams(species);
+  const dx = targetX - meX;
+  const dz = targetZ - meZ;
+  const dist = Math.hypot(dx, dz);
+  if (dist > sightDist) return false;
+  
+  const angleToTarget = Math.atan2(dx, dz);
+  let diff = Math.abs(angleToTarget - meHeading);
+  while (diff > Math.PI) diff -= Math.PI * 2;
+  return Math.abs(diff) <= fov / 2;
+}
+
+
 export default function Animal({
   spawn,
   species,
@@ -94,6 +116,7 @@ export default function Animal({
   onReproduce,
   vitalsRef,
   isRaining,
+  isPOV,
 }: AnimalProps) {
   const groupRef = useRef<Group>(null);
 
@@ -138,6 +161,12 @@ export default function Animal({
     };
   }, [selected]);
 
+  useEffect(() => {
+    return () => {
+      liveAnimals.delete(spawn.id);
+    };
+  }, [spawn.id]);
+
   // Read by AnimalModel every frame to pick the deer's animation clip.
   const statusRef = useRef<AnimalStatus>("Roaming");
   // Per-frame movement and needs state lives in a ref so animation never
@@ -173,6 +202,14 @@ export default function Animal({
     const m = motion.current;
     if (m.hasDied) return;
 
+    liveAnimals.set(spawn.id, {
+      x: m.x,
+      z: m.z,
+      speciesId: spawn.speciesId,
+      status: m.status,
+      heading: m.visualHeading,
+    });
+
     // Dynamic ground contact: one ray straight down at the current (X, Z).
     // No hit means the terrain is still streaming in — stay parked until
     // there is ground to stand on.
@@ -200,6 +237,7 @@ export default function Animal({
         m.criticalTimer += dt;
         if (m.criticalTimer >= DEATH_AFTER_CRITICAL) {
           m.hasDied = true;
+          liveAnimals.delete(spawn.id);
           onDeath(spawn.id);
           return;
         }
@@ -336,25 +374,120 @@ export default function Animal({
             }
           }
         } else {
-          m.status = "Roaming";
-          // Pick a new wander direction every few seconds, validated against
-          // the terrain: the look-ahead point must be standable for this
-          // species (fish stay in the river, land animals stay off it).
-          m.wanderTimer -= dt;
-          if (m.wanderTimer <= 0) {
-            m.wanderTimer = 2 + Math.random() * 3;
-            for (let attempt = 0; attempt < WANDER_TRIES; attempt++) {
-              const spread = attempt === 0 ? Math.PI : Math.PI * 2;
-              const candidate = m.heading + (Math.random() - 0.5) * spread;
-              const look = sampleGround(
-                m.x + Math.sin(candidate) * WANDER_LOOKAHEAD,
-                m.z + Math.cos(candidate) * WANDER_LOOKAHEAD
-              );
-              if (look && canOccupy(species, look)) {
-                m.headingTarget = candidate;
-                break;
+          // AI: Senses, Predators, Flocking
+          let strangersCount = 0;
+          let fleeX = 0, fleeZ = 0;
+          let friendsX = 0, friendsZ = 0, friendsHeading = 0, friendsCount = 0;
+          
+          let preyTargetX: number | null = null;
+          let preyTargetZ: number | null = null;
+          let isDead = false;
+          
+          for (const [id, state] of liveAnimals.entries()) {
+            if (id === spawn.id) continue;
+            
+            const dist = Math.hypot(state.x - m.x, state.z - m.z);
+            const otherSpecies = getSpecies(state.speciesId);
+            
+            // Predator kill check (instant)
+            if (otherSpecies.predatorOf?.includes(species.id) && dist < 0.8) {
+               isDead = true;
+               break;
+            }
+
+            // Must be able to see or hear them (Hearing=3)
+            if (dist > 3 && !canSee(m.x, m.z, m.heading, state.x, state.z, species)) {
+               continue;
+            }
+            
+            if (state.speciesId === spawn.speciesId) {
+              if (dist < 5) {
+                friendsX += state.x;
+                friendsZ += state.z;
+                friendsHeading += state.heading;
+                friendsCount++;
+              }
+              if (dist < 0.8) {
+                fleeX += (m.x - state.x);
+                fleeZ += (m.z - state.z);
+              }
+            } else {
+              if (species.predatorOf?.includes(state.speciesId)) {
+                // I am a predator, they are prey! Hunt if hungry
+                if (m.hunger > 30) {
+                   preyTargetX = state.x;
+                   preyTargetZ = state.z;
+                }
+              } else if (otherSpecies.predatorOf?.includes(species.id) || dist < 3) {
+                strangersCount++;
+                fleeX += (m.x - state.x);
+                fleeZ += (m.z - state.z);
               }
             }
+          }
+          
+          if (isDead) {
+             m.hasDied = true;
+             liveAnimals.delete(spawn.id);
+             onDeath(spawn.id);
+             return;
+          }
+          
+          if (strangersCount > 0 && species.locomotion !== "aquatic") {
+            m.status = "Fleeing";
+            m.headingTarget = Math.atan2(fleeX, fleeZ);
+          } else if (preyTargetX !== null && preyTargetZ !== null) {
+            m.status = "Hunting";
+            m.headingTarget = Math.atan2(preyTargetX - m.x, preyTargetZ - m.z);
+          } else {
+            m.wanderTimer -= dt;
+            if (m.wanderTimer <= 0) {
+              if (m.hunger < WELL_FED_LEVEL && m.thirst < WELL_FED_LEVEL && Math.random() < 0.25) {
+                m.status = "Idle";
+                m.wanderTimer = 3 + Math.random() * 4;
+              } else {
+                m.status = "Roaming";
+                m.wanderTimer = 1.5 + Math.random() * 2.5;
+                
+                let candidateHeading = m.heading + (Math.random() - 0.5) * Math.PI;
+                if (friendsCount > 0) {
+                  const towardCenter = Math.atan2(friendsX / friendsCount - m.x, friendsZ / friendsCount - m.z);
+                  const avgHeading = friendsHeading / friendsCount;
+                  
+                  let totalSin = Math.sin(candidateHeading) + Math.sin(avgHeading) * 0.3 + Math.sin(towardCenter) * 0.2;
+                  let totalCos = Math.cos(candidateHeading) + Math.cos(avgHeading) * 0.3 + Math.cos(towardCenter) * 0.2;
+                  candidateHeading = Math.atan2(totalSin, totalCos);
+                }
+                
+                if (fleeX !== 0 || fleeZ !== 0) {
+                  const sepHeading = Math.atan2(fleeX, fleeZ);
+                  let totalSin = Math.sin(candidateHeading) + Math.sin(sepHeading) * 0.8;
+                  let totalCos = Math.cos(candidateHeading) + Math.cos(sepHeading) * 0.8;
+                  candidateHeading = Math.atan2(totalSin, totalCos);
+                }
+                
+                for (let attempt = 0; attempt < WANDER_TRIES; attempt++) {
+                  const spread = attempt === 0 ? 0 : Math.PI * 2;
+                  const candidate = candidateHeading + (Math.random() - 0.5) * spread;
+                  const look = sampleGround(
+                    m.x + Math.sin(candidate) * WANDER_LOOKAHEAD,
+                    m.z + Math.cos(candidate) * WANDER_LOOKAHEAD
+                  );
+                  if (look && canOccupy(species, look)) {
+                    m.headingTarget = candidate;
+                    break;
+                  }
+                }
+              }
+            } else if (m.status === "Roaming" && (fleeX !== 0 || fleeZ !== 0)) {
+               const sepHeading = Math.atan2(fleeX, fleeZ);
+               let totalSin = Math.sin(m.headingTarget) + Math.sin(sepHeading) * 0.15;
+               let totalCos = Math.cos(m.headingTarget) + Math.cos(sepHeading) * 0.15;
+               m.headingTarget = Math.atan2(totalSin, totalCos);
+            }
+          }
+          if (m.status === "Idle") {
+            moving = false;
           }
         }
 
@@ -390,52 +523,69 @@ export default function Animal({
             m.headingTarget = Math.atan2(-m.x, -m.z);
           }
 
-          // Turn smoothly along the shortest arc toward the target heading.
-          const diff = Math.atan2(
-            Math.sin(m.headingTarget - m.heading),
-            Math.cos(m.headingTarget - m.heading)
-          );
-          m.heading += diff * Math.min(1, species.turnSpeed * dt);
-
-          const nextX = m.x + Math.sin(m.heading) * species.moveSpeed * dt;
-          const nextZ = m.z + Math.cos(m.heading) * species.moveSpeed * dt;
-          const ahead = sampleGround(nextX, nextZ);
-
-          let hitVeg = false;
+          // Compute Potential Field for Obstacles (mapping all exact object positions)
+          let avoidX = 0, avoidZ = 0;
+          let avoidStrength = 0;
+          
           if (species.id !== "hawk") {
             for (const v of VEGETATION) {
-              const r = species.selectionRadius * 0.5 + 0.35;
-              const nd = Math.hypot(v.x - nextX, v.z - nextZ);
-              if (nd < r) {
-                const cd = Math.hypot(v.x - m.x, v.z - m.z);
-                if (nd <= cd) {
-                  hitVeg = true;
-                  break;
-                }
+              const dx = m.x - v.x;
+              const dz = m.z - v.z;
+              const dist = Math.hypot(dx, dz);
+              // Scale radius based on vegetation scale and animal size
+              const safeRadius = (species.selectionRadius * 0.5) + (v.scale * 0.6) + 0.4;
+              if (dist < safeRadius) {
+                 const push = Math.pow((safeRadius - dist) / safeRadius, 2);
+                 avoidX += (dx / dist) * push;
+                 avoidZ += (dz / dist) * push;
+                 avoidStrength += push;
               }
             }
           }
-
-          const isWorldEdge = !ahead;
-          const isCliff = ahead && ahead.normalY < MIN_GROUND_NORMAL_Y;
-          const isBiomeBorder = ahead && !stranded && !canOccupy(species, ahead);
-          const isObstacle = isWorldEdge || isCliff || isBiomeBorder || hitVeg;
-
-          if (isObstacle) {
-            const diffTarget = Math.atan2(
-              Math.sin(m.headingTarget - m.heading),
-              Math.cos(m.headingTarget - m.heading)
-            );
-            
-            if (m.avoidanceTimer <= 0 || Math.abs(diffTarget) < 0.1) {
-              if (isWorldEdge) {
-                m.headingTarget = Math.atan2(-m.x, -m.z);
-              } else {
-                m.headingTarget = m.heading + Math.PI * (0.75 + Math.random() * 0.5);
+          
+          // Avoid cliffs and invalid terrain (sample in a circle)
+          const lookahead = 1.0;
+          for (let angle = 0; angle < Math.PI * 2; angle += Math.PI / 4) {
+              const cx = m.x + Math.sin(angle) * lookahead;
+              const cz = m.z + Math.cos(angle) * lookahead;
+              const ground = sampleGround(cx, cz);
+              if (!ground || ground.normalY < MIN_GROUND_NORMAL_Y || (!canOccupy(species, ground) && !stranded)) {
+                  avoidX -= Math.sin(angle) * 0.8; // Push away from this angle
+                  avoidZ -= Math.cos(angle) * 0.8;
+                  avoidStrength += 0.8;
               }
-              m.avoidanceTimer = 2.5;
-            }
-          } else {
+          }
+
+          let finalHeadingTarget = m.headingTarget;
+          if (avoidStrength > 0) {
+             // Blend current target heading with avoidance vector
+             const targetVecX = Math.sin(m.headingTarget) * 0.4 + avoidX;
+             const targetVecZ = Math.cos(m.headingTarget) * 0.4 + avoidZ;
+             finalHeadingTarget = Math.atan2(targetVecX, targetVecZ);
+          }
+
+          const diff = Math.atan2(
+            Math.sin(finalHeadingTarget - m.heading),
+            Math.cos(finalHeadingTarget - m.heading)
+          );
+          
+          let speedMult = 1.0;
+          if (m.status === "Fleeing") speedMult = 2.5;
+          else if (m.status === "Hunting") speedMult = 2.0;
+          else if (m.status === "Seeking food" || m.status === "Seeking water") speedMult = 1.4;
+          
+          // If heavily avoiding something, slow down slightly so they don't clip through while turning
+          if (avoidStrength > 1.0) speedMult *= 0.6;
+
+          // Turn much faster when actively avoiding objects to prevent getting stuck
+          m.heading += diff * Math.min(1, species.turnSpeed * (speedMult > 1 ? 1.5 : 1.0) * dt * (avoidStrength > 0 ? 3.0 : 1.0));
+
+          const nextX = m.x + Math.sin(m.heading) * species.moveSpeed * speedMult * dt;
+          const nextZ = m.z + Math.cos(m.heading) * species.moveSpeed * speedMult * dt;
+          const ahead = sampleGround(nextX, nextZ);
+
+          // Hard safety check
+          if (ahead && (canOccupy(species, ahead) || stranded) && ahead.normalY >= MIN_GROUND_NORMAL_Y) {
             m.x = nextX;
             m.z = nextZ;
             here = ahead;
@@ -510,6 +660,18 @@ export default function Animal({
       onPointerOver={handlePointerOver}
       onPointerOut={handlePointerOut}
     >
+      {isPOV && (
+        <PerspectiveCamera
+          makeDefault
+          position={[
+            0, 
+            (species.modelYOffset || 0) + species.selectionRadius * 1.2 + (species.id === "hawk" ? 1.2 : 0.3), 
+            -species.selectionRadius * 2.5 - (species.id === "hawk" ? 1.5 : 0.6)
+          ]}
+          rotation={[species.id === "hawk" ? 0.6 : 0.15, Math.PI, 0]}
+          fov={75}
+        />
+      )}
       {/* The per-animal Suspense keeps this animal's frame loop and the rest
           of the population running while its GLB streams in. Selection
           feedback is the ring below (cloned GLB materials are shared, so

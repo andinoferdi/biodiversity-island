@@ -89,6 +89,7 @@ export default function BiodiversityPrototype() {
   const [graphicQuality, setGraphicQuality] = useState<GraphicQuality>("high");
   const [isRaining, setIsRaining] = useState(false);
   const [isCloudy, setIsCloudy] = useState(true);
+  const [isPOV, setIsPOV] = useState(false);
   const [vitals, setVitals] = useState<AnimalVitals>(INITIAL_VITALS);
   const [population, setPopulation] = useState<AnimalSpawn[]>(ANIMAL_SPAWNS);
   const vitalsRef = useRef<AnimalVitals>({ ...INITIAL_VITALS });
@@ -96,7 +97,13 @@ export default function BiodiversityPrototype() {
 
   const handleDeath = useCallback((id: string) => {
     setPopulation((prev) => prev.filter((spawn) => spawn.id !== id));
-    setSelectedId((prev) => (prev === id ? null : prev));
+    setSelectedId((prev) => {
+      if (prev === id) {
+        setIsPOV(false);
+        return null;
+      }
+      return prev;
+    });
   }, []);
 
   const handleReproduce = useCallback(
@@ -162,7 +169,7 @@ export default function BiodiversityPrototype() {
         population={population}
         selectedId={selectedId}
         onSelect={setSelectedId}
-        onDeselect={() => setSelectedId(null)}
+        onDeselect={() => { setSelectedId(null); setIsPOV(false); }}
         onDeath={handleDeath}
         onReproduce={handleReproduce}
         timeScale={timeScale}
@@ -170,6 +177,7 @@ export default function BiodiversityPrototype() {
         graphicQuality={graphicQuality}
         isRaining={isRaining}
         isCloudy={isCloudy}
+        isPOV={isPOV}
       />
 
       <div className="absolute left-4 top-4 max-w-xs rounded-lg bg-slate-950/70 p-4 text-slate-100 backdrop-blur-sm">
@@ -277,14 +285,23 @@ export default function BiodiversityPrototype() {
             <NeedBar label="Hunger" value={vitals.hunger} />
             <NeedBar label="Thirst" value={vitals.thirst} />
           </div>
-          <button
-            type="button"
-            aria-label="Deselect animal"
-            onClick={() => setSelectedId(null)}
-            className="mt-3 w-full rounded-md bg-slate-200 px-3 py-1.5 text-sm font-medium text-slate-900 transition-colors hover:bg-white"
-          >
-            Deselect
-          </button>
+          <div className="mt-3 flex gap-2">
+            <button
+              type="button"
+              onClick={() => setIsPOV(!isPOV)}
+              className="w-full rounded-md bg-blue-600 px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-blue-500"
+            >
+              {isPOV ? "Exit POV" : "Enter POV"}
+            </button>
+            <button
+              type="button"
+              aria-label="Deselect animal"
+              onClick={() => { setSelectedId(null); setIsPOV(false); }}
+              className="w-full rounded-md bg-slate-200 px-3 py-1.5 text-sm font-medium text-slate-900 transition-colors hover:bg-white"
+            >
+              Deselect
+            </button>
+          </div>
         </div>
       )}
     </div>
