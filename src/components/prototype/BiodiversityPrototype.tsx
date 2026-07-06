@@ -2,7 +2,7 @@
 
 import dynamic from "next/dynamic";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ANIMAL_SPAWNS, SPECIES, getSpecies, type AnimalSpawn } from "./species";
+import { ANIMAL_SPAWNS, SPECIES, SPECIES_BY_ID, getSpecies, type AnimalSpawn } from "./species";
 import {
   CRITICAL_LEVEL,
   MAX_POPULATION,
@@ -274,6 +274,16 @@ export default function BiodiversityPrototype() {
               <dt className="text-slate-400">Diet</dt>
               <dd className="text-right">{selectedSpecies.diet}</dd>
             </div>
+            {selectedSpecies.predatorOf && (
+              <div className="flex justify-between gap-2">
+                <dt className="text-slate-400">Prey</dt>
+                <dd className="text-right">
+                  {selectedSpecies.predatorOf
+                    .map((id) => SPECIES_BY_ID.get(id)?.name ?? id)
+                    .join(", ")}
+                </dd>
+              </div>
+            )}
             <div className="flex justify-between">
               <dt className="text-slate-400">Position</dt>
               <dd>

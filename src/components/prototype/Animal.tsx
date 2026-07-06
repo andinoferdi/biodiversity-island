@@ -20,6 +20,12 @@ import {
   WALK_RADIUS,
   WELL_FED_LEVEL,
   liveAnimals,
+  killRewards,
+  KILL_RANGE,
+  HUNT_HUNGER_THRESHOLD,
+  KILL_HUNGER_RESTORE,
+  EAT_PREY_DURATION,
+  HEARING_RANGE,
   type AnimalStatus,
   type AnimalVitals,
   type ResourceSpot,
@@ -105,6 +111,90 @@ function canSee(meX: number, meZ: number, meHeading: number, targetX: number, ta
   return Math.abs(diff) <= fov / 2;
 }
 
+interface SenseResult {
+  // Id predator yang berada dalam KILL_RANGE (mangsa mati frame ini).
+  killerId: string | null;
+  // Akumulasi arah menjauh dari ancaman/kerumunan (untuk Fleeing/separation).
+  fleeX: number;
+  fleeZ: number;
+  threatCount: number;
+  // Posisi mangsa terdekat yang terlihat (untuk Hunting), null jika tak ada.
+  preyX: number | null;
+  preyZ: number | null;
+  // Akumulasi flocking sesama spesies (cohesion + alignment).
+  friendsX: number;
+  friendsZ: number;
+  friendsHeading: number;
+  friendsCount: number;
+}
+
+// Satu pass atas liveAnimals per hewan per frame: kill check, deteksi
+// ancaman, pemilihan mangsa, dan data flocking sekaligus.
+function sense(
+  selfId: string,
+  m: { x: number; z: number; heading: number; hunger: number },
+  species: Species
+): SenseResult {
+  const r: SenseResult = {
+    killerId: null,
+    fleeX: 0,
+    fleeZ: 0,
+    threatCount: 0,
+    preyX: null,
+    preyZ: null,
+    friendsX: 0,
+    friendsZ: 0,
+    friendsHeading: 0,
+    friendsCount: 0,
+  };
+  let nearestPreyDist = Infinity;
+
+  for (const [id, state] of liveAnimals.entries()) {
+    if (id === selfId) continue;
+
+    const dist = Math.hypot(state.x - m.x, state.z - m.z);
+    const otherSpecies = getSpecies(state.speciesId);
+
+    // Kill check: berlaku selalu, apa pun status mangsa.
+    if (otherSpecies.predatorOf?.includes(species.id) && dist < KILL_RANGE) {
+      r.killerId = id;
+      return r;
+    }
+
+    // Sisanya butuh persepsi: terlihat (FOV + jarak) atau terdengar.
+    if (dist > HEARING_RANGE && !canSee(m.x, m.z, m.heading, state.x, state.z, species)) {
+      continue;
+    }
+
+    if (state.speciesId === species.id) {
+      if (dist < 5) {
+        r.friendsX += state.x;
+        r.friendsZ += state.z;
+        r.friendsHeading += state.heading;
+        r.friendsCount++;
+      }
+      if (dist < KILL_RANGE) {
+        r.fleeX += m.x - state.x;
+        r.fleeZ += m.z - state.z;
+      }
+    } else if (species.predatorOf?.includes(state.speciesId)) {
+      // Predator lapar memilih mangsa terlihat yang paling dekat.
+      if (m.hunger > HUNT_HUNGER_THRESHOLD && dist < nearestPreyDist) {
+        nearestPreyDist = dist;
+        r.preyX = state.x;
+        r.preyZ = state.z;
+      }
+    } else if (otherSpecies.predatorOf?.includes(species.id)) {
+      // Ancaman nyata saja (bukan sekadar hewan lain yang kebetulan dekat)
+      // yang memicu Fleeing; deteksinya sudah lolos gerbang lihat/dengar di atas.
+      r.threatCount++;
+      r.fleeX += m.x - state.x;
+      r.fleeZ += m.z - state.z;
+    }
+  }
+
+  return r;
+}
 
 export default function Animal({
   spawn,
@@ -193,6 +283,8 @@ export default function Animal({
     status: "Roaming" as AnimalStatus,
     criticalTimer: 0,
     wellFedTimer: 0,
+    // Sisa waktu predator "memakan" mangsanya setelah kill (status Eating).
+    eatPreyTimer: 0,
     hasDied: false,
   });
 
@@ -267,6 +359,30 @@ export default function Animal({
           m.vy = 0;
         }
       }
+
+      // Sense pass: berjalan setiap frame agar mangsa yang sedang makan/minum
+      // tetap bisa diserang dan tetap kabur.
+      const senseResult = selected ? null : sense(spawn.id, m, species);
+
+      if (senseResult?.killerId) {
+        killRewards.set(
+          senseResult.killerId,
+          (killRewards.get(senseResult.killerId) ?? 0) + 1
+        );
+        m.hasDied = true;
+        liveAnimals.delete(spawn.id);
+        onDeath(spawn.id);
+        return;
+      }
+
+      // Klaim hasil buruan yang ditulis mangsa pada frame kematiannya.
+      const claimed = killRewards.get(spawn.id);
+      if (claimed) {
+        killRewards.delete(spawn.id);
+        m.hunger = Math.max(0, m.hunger - KILL_HUNGER_RESTORE * claimed);
+        m.eatPreyTimer = EAT_PREY_DURATION;
+      }
+      if (m.eatPreyTimer > 0) m.eatPreyTimer = Math.max(0, m.eatPreyTimer - dt);
 
       if (selected) {
         m.status = "Idle";
@@ -344,7 +460,22 @@ export default function Animal({
             : here.water;
 
         let moving = true;
-        if (atWater && m.thirst > SATISFIED_LEVEL && m.status === "Drinking") {
+        if (m.eatPreyTimer > 0) {
+          // Baru membunuh: berhenti dan makan mangsanya.
+          m.status = "Eating";
+          if (!species.neverStops) moving = false;
+        } else if (senseResult!.threatCount > 0 && species.locomotion !== "aquatic") {
+          // Ancaman terlihat/terdengar: kabur, override lapar/haus.
+          m.status = "Fleeing";
+          m.headingTarget = Math.atan2(senseResult!.fleeX, senseResult!.fleeZ);
+        } else if (senseResult!.preyX !== null && senseResult!.preyZ !== null) {
+          // Predator lapar: kejar mangsa terdekat.
+          m.status = "Hunting";
+          m.headingTarget = Math.atan2(
+            senseResult!.preyX - m.x,
+            senseResult!.preyZ - m.z
+          );
+        } else if (atWater && m.thirst > SATISFIED_LEVEL && m.status === "Drinking") {
           m.thirst = Math.max(0, m.thirst - species.consumeRate * dt);
           if (!species.neverStops) moving = false;
         } else if (atFood && m.hunger > SATISFIED_LEVEL && m.status === "Eating") {
@@ -374,121 +505,59 @@ export default function Animal({
             }
           }
         } else {
-          // AI: Senses, Predators, Flocking
-          let strangersCount = 0;
-          let fleeX = 0, fleeZ = 0;
-          let friendsX = 0, friendsZ = 0, friendsHeading = 0, friendsCount = 0;
-          
-          let preyTargetX: number | null = null;
-          let preyTargetZ: number | null = null;
-          let isDead = false;
-          
-          for (const [id, state] of liveAnimals.entries()) {
-            if (id === spawn.id) continue;
-            
-            const dist = Math.hypot(state.x - m.x, state.z - m.z);
-            const otherSpecies = getSpecies(state.speciesId);
-            
-            // Predator kill check (instant)
-            if (otherSpecies.predatorOf?.includes(species.id) && dist < 0.8) {
-               isDead = true;
-               break;
-            }
-
-            // Must be able to see or hear them (Hearing=3)
-            if (dist > 3 && !canSee(m.x, m.z, m.heading, state.x, state.z, species)) {
-               continue;
-            }
-            
-            if (state.speciesId === spawn.speciesId) {
-              if (dist < 5) {
-                friendsX += state.x;
-                friendsZ += state.z;
-                friendsHeading += state.heading;
-                friendsCount++;
-              }
-              if (dist < 0.8) {
-                fleeX += (m.x - state.x);
-                fleeZ += (m.z - state.z);
-              }
+          // AI: wander + flocking (fleeing/hunting are already handled above
+          // via senseResult, so this branch only needs cohesion/alignment).
+          m.wanderTimer -= dt;
+          if (m.wanderTimer <= 0) {
+            if (m.hunger < WELL_FED_LEVEL && m.thirst < WELL_FED_LEVEL && Math.random() < 0.25) {
+              m.status = "Idle";
+              m.wanderTimer = 3 + Math.random() * 4;
             } else {
-              if (species.predatorOf?.includes(state.speciesId)) {
-                // I am a predator, they are prey! Hunt if hungry
-                if (m.hunger > 30) {
-                   preyTargetX = state.x;
-                   preyTargetZ = state.z;
+              m.status = "Roaming";
+              m.wanderTimer = 1.5 + Math.random() * 2.5;
+
+              let candidateHeading = m.heading + (Math.random() - 0.5) * Math.PI;
+              if (senseResult!.friendsCount > 0) {
+                const towardCenter = Math.atan2(
+                  senseResult!.friendsX / senseResult!.friendsCount - m.x,
+                  senseResult!.friendsZ / senseResult!.friendsCount - m.z
+                );
+                const avgHeading = senseResult!.friendsHeading / senseResult!.friendsCount;
+
+                let totalSin = Math.sin(candidateHeading) + Math.sin(avgHeading) * 0.3 + Math.sin(towardCenter) * 0.2;
+                let totalCos = Math.cos(candidateHeading) + Math.cos(avgHeading) * 0.3 + Math.cos(towardCenter) * 0.2;
+                candidateHeading = Math.atan2(totalSin, totalCos);
+              }
+
+              if (senseResult!.fleeX !== 0 || senseResult!.fleeZ !== 0) {
+                const sepHeading = Math.atan2(senseResult!.fleeX, senseResult!.fleeZ);
+                let totalSin = Math.sin(candidateHeading) + Math.sin(sepHeading) * 0.8;
+                let totalCos = Math.cos(candidateHeading) + Math.cos(sepHeading) * 0.8;
+                candidateHeading = Math.atan2(totalSin, totalCos);
+              }
+
+              for (let attempt = 0; attempt < WANDER_TRIES; attempt++) {
+                const spread = attempt === 0 ? 0 : Math.PI * 2;
+                const candidate = candidateHeading + (Math.random() - 0.5) * spread;
+                const look = sampleGround(
+                  m.x + Math.sin(candidate) * WANDER_LOOKAHEAD,
+                  m.z + Math.cos(candidate) * WANDER_LOOKAHEAD
+                );
+                if (look && canOccupy(species, look)) {
+                  m.headingTarget = candidate;
+                  break;
                 }
-              } else if (otherSpecies.predatorOf?.includes(species.id) || dist < 3) {
-                strangersCount++;
-                fleeX += (m.x - state.x);
-                fleeZ += (m.z - state.z);
               }
             }
+          } else if (m.status === "Roaming" && (senseResult!.fleeX !== 0 || senseResult!.fleeZ !== 0)) {
+             const sepHeading = Math.atan2(senseResult!.fleeX, senseResult!.fleeZ);
+             let totalSin = Math.sin(m.headingTarget) + Math.sin(sepHeading) * 0.15;
+             let totalCos = Math.cos(m.headingTarget) + Math.cos(sepHeading) * 0.15;
+             m.headingTarget = Math.atan2(totalSin, totalCos);
           }
-          
-          if (isDead) {
-             m.hasDied = true;
-             liveAnimals.delete(spawn.id);
-             onDeath(spawn.id);
-             return;
-          }
-          
-          if (strangersCount > 0 && species.locomotion !== "aquatic") {
-            m.status = "Fleeing";
-            m.headingTarget = Math.atan2(fleeX, fleeZ);
-          } else if (preyTargetX !== null && preyTargetZ !== null) {
-            m.status = "Hunting";
-            m.headingTarget = Math.atan2(preyTargetX - m.x, preyTargetZ - m.z);
-          } else {
-            m.wanderTimer -= dt;
-            if (m.wanderTimer <= 0) {
-              if (m.hunger < WELL_FED_LEVEL && m.thirst < WELL_FED_LEVEL && Math.random() < 0.25) {
-                m.status = "Idle";
-                m.wanderTimer = 3 + Math.random() * 4;
-              } else {
-                m.status = "Roaming";
-                m.wanderTimer = 1.5 + Math.random() * 2.5;
-                
-                let candidateHeading = m.heading + (Math.random() - 0.5) * Math.PI;
-                if (friendsCount > 0) {
-                  const towardCenter = Math.atan2(friendsX / friendsCount - m.x, friendsZ / friendsCount - m.z);
-                  const avgHeading = friendsHeading / friendsCount;
-                  
-                  let totalSin = Math.sin(candidateHeading) + Math.sin(avgHeading) * 0.3 + Math.sin(towardCenter) * 0.2;
-                  let totalCos = Math.cos(candidateHeading) + Math.cos(avgHeading) * 0.3 + Math.cos(towardCenter) * 0.2;
-                  candidateHeading = Math.atan2(totalSin, totalCos);
-                }
-                
-                if (fleeX !== 0 || fleeZ !== 0) {
-                  const sepHeading = Math.atan2(fleeX, fleeZ);
-                  let totalSin = Math.sin(candidateHeading) + Math.sin(sepHeading) * 0.8;
-                  let totalCos = Math.cos(candidateHeading) + Math.cos(sepHeading) * 0.8;
-                  candidateHeading = Math.atan2(totalSin, totalCos);
-                }
-                
-                for (let attempt = 0; attempt < WANDER_TRIES; attempt++) {
-                  const spread = attempt === 0 ? 0 : Math.PI * 2;
-                  const candidate = candidateHeading + (Math.random() - 0.5) * spread;
-                  const look = sampleGround(
-                    m.x + Math.sin(candidate) * WANDER_LOOKAHEAD,
-                    m.z + Math.cos(candidate) * WANDER_LOOKAHEAD
-                  );
-                  if (look && canOccupy(species, look)) {
-                    m.headingTarget = candidate;
-                    break;
-                  }
-                }
-              }
-            } else if (m.status === "Roaming" && (fleeX !== 0 || fleeZ !== 0)) {
-               const sepHeading = Math.atan2(fleeX, fleeZ);
-               let totalSin = Math.sin(m.headingTarget) + Math.sin(sepHeading) * 0.15;
-               let totalCos = Math.cos(m.headingTarget) + Math.cos(sepHeading) * 0.15;
-               m.headingTarget = Math.atan2(totalSin, totalCos);
-            }
-          }
-          if (m.status === "Idle") {
-            moving = false;
-          }
+        }
+        if (m.status === "Idle") {
+          moving = false;
         }
 
         // A pinned need overrides the status label so the panel telegraphs

@@ -25,6 +25,8 @@ export interface Species {
     walk: string;
     eat?: string;
     idle?: string;
+    // Klip cepat untuk status Hunting/Fleeing (mis. Gallop); fallback ke walk.
+    run?: string;
   };
   // If true, the animal never stops moving (even while consuming resources).
   neverStops?: boolean;
@@ -76,6 +78,31 @@ export const SPECIES: Species[] = [
     thirstRate: 1.8,
     consumeRate: 20,
     fov: 2.5, // Deer have wide peripheral vision
+    sightDistance: 12,
+  },
+  {
+    id: "wolf",
+    name: "Wolf",
+    habitat: "Wooded hills",
+    locomotion: "terrestrial",
+    diet: "Deer & rabbits",
+    modelUrl: "/assets/animal/wolf/wolf.glb",
+    // Bbox mentah GLB ~5.55 panjang / ~2.67 tinggi; 0.13 menghasilkan ukuran
+    // sedikit di atas deer. KALIBRASI VISUAL di Step 5 sebelum dianggap final.
+    modelScale: 0.13,
+    modelYOffset: 0,
+    modelRotY: 0,
+    animated: true,
+    animations: { walk: "Walk", run: "Gallop", eat: "Eating", idle: "Idle" },
+    selectionRadius: 0.38,
+    // Lebih lambat dari deer saat santai; menang saat mengejar berkat
+    // speed multiplier Hunting 2.0x.
+    moveSpeed: 0.9,
+    turnSpeed: 2.0,
+    hungerRate: 1.2,
+    thirstRate: 1.4,
+    consumeRate: 18,
+    predatorOf: ["deer", "rabbit"],
     sightDistance: 12,
   },
   {
@@ -187,7 +214,7 @@ export const SPECIES: Species[] = [
   },
 ];
 
-const SPECIES_BY_ID = new Map(SPECIES.map((species) => [species.id, species]));
+export const SPECIES_BY_ID = new Map(SPECIES.map((species) => [species.id, species]));
 
 export function getSpecies(speciesId: string): Species {
   const species = SPECIES_BY_ID.get(speciesId);
@@ -213,4 +240,5 @@ export const ANIMAL_SPAWNS: AnimalSpawn[] = [
   { id: "rabbit-2", speciesId: "rabbit", label: "Rabbit #2", x: -2.0, z: -2.0, heading: 0.4 },
   { id: "fish-1", speciesId: "fish", label: "Fish #1", x: 0.6, z: -0.3, heading: 2.0 },
   { id: "fish-2", speciesId: "fish", label: "Fish #2", x: 2.4, z: -2.1, heading: 4.6 },
+  { id: "wolf-1", speciesId: "wolf", label: "Wolf #1", x: -4.8, z: 2.4, heading: 2.6 },
 ];

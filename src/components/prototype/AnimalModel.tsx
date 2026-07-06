@@ -41,6 +41,10 @@ function clipFor(
     return anims.idle || anims.walk;
   }
 
+  if (status === "Hunting" || status === "Fleeing") {
+    return anims.run || anims.walk || anims.idle || Object.keys(actions)[0] || null;
+  }
+
   // By default, the animal is moving (Roaming, Seeking, Fleeing)
   return anims.walk || anims.idle || Object.keys(actions)[0] || null;
 }

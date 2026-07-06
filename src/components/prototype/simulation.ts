@@ -98,3 +98,19 @@ export interface AnimalState {
 
 export const liveAnimals = new Map<string, AnimalState>();
 
+// ---- Predator–prey tuning -------------------------------------------------
+// Jarak predator–mangsa yang mengakibatkan kill instan.
+export const KILL_RANGE = 0.8;
+// Predator hanya berburu ketika hunger di atas ambang ini.
+export const HUNT_HUNGER_THRESHOLD = 55;
+// Hunger predator berkurang sebesar ini untuk tiap mangsa yang dibunuh.
+export const KILL_HUNGER_RESTORE = 65;
+// Lama (detik-simulasi) predator berstatus Eating setelah membunuh.
+export const EAT_PREY_DURATION = 4;
+// Dalam jarak ini hewan "mendengar" hewan lain meski di luar FOV penglihatan.
+export const HEARING_RANGE = 3;
+
+// Mailbox antar-hewan: komponen Animal hanya boleh memutasi ref miliknya
+// sendiri, jadi mangsa yang mati menulis id pembunuhnya ke sini dan predator
+// mengklaimnya di awal frame berikutnya (hunger turun + status Eating).
+export const killRewards = new Map<string, number>();
