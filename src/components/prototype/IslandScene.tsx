@@ -12,6 +12,7 @@ import {
 import Animal from "./Animal";
 import Sky from "./effects/Sky";
 import Clouds from "./effects/Clouds";
+import FogLayer from "./effects/FogLayer";
 import Rain from "./effects/Rain";
 import { Log, Rock, TerrainGLB, Tree, AppleTreeModel, AppleModel, GrassModel } from "./EnvironmentModels";
 import {
@@ -168,6 +169,7 @@ interface IslandSceneProps {
   graphicQuality: GraphicQuality;
   isRaining: boolean;
   isCloudy: boolean;
+  isFoggy: boolean;
   isPOV: boolean;
 }
 
@@ -183,6 +185,7 @@ export default function IslandScene({
   graphicQuality,
   isRaining,
   isCloudy,
+  isFoggy,
   isPOV,
 }: IslandSceneProps) {
   return (
@@ -199,8 +202,18 @@ export default function IslandScene({
           </div>
         }
       >
-        <Sky graphicQuality={graphicQuality} timeScale={timeScale} isRaining={isRaining} />
+        <Sky
+          graphicQuality={graphicQuality}
+          timeScale={timeScale}
+          isRaining={isRaining}
+          isFoggy={isFoggy}
+        />
         <Sea />
+        <FogLayer
+          isFoggy={isFoggy}
+          isRaining={isRaining}
+          timeScale={timeScale}
+        />
         {/* The terrain and vegetation GLBs suspend while streaming in; the
             HTML overlay below covers the wait, and the animals hold still
             until the ground raycasts start hitting. */}
@@ -211,7 +224,7 @@ export default function IslandScene({
             <Resource key={spot.id} spot={spot} />
           ))}
         </Suspense>
-        {isCloudy && <Clouds isRaining={isRaining} timeScale={timeScale} />}
+        <Clouds isCloudy={isCloudy} isRaining={isRaining} timeScale={timeScale} />
         <Rain
           key={graphicQuality}
           isRaining={isRaining}

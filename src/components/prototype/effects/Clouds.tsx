@@ -16,6 +16,10 @@ const ALTITUDE_MAX = 6.6;
 const RAIN_SINK = 0.8; // saat hujan, posisi awan turun sedikit
 const SHADOW_SCALE = 5.5;
 const LAYOUT_SEED = 20260706;
+const CLOUD_FADE_MIN_SCALE = 0.55;
+const CLOUD_HIDE_LIFT = 1.2;
+const CLOUD_VISIBLE_OPACITY = 0.92;
+const SHADOW_VISIBLE_OPACITY = 0.34;
 
 interface Lobe {
   ox: number;
@@ -82,14 +86,16 @@ function makeShadowTexture(): THREE.CanvasTexture {
 }
 
 interface CloudsProps {
+  isCloudy: boolean;
   isRaining: boolean;
   timeScale: TimeScale;
 }
 
-export default function Clouds({ isRaining, timeScale }: CloudsProps) {
+export default function Clouds({ isCloudy, isRaining, timeScale }: CloudsProps) {
   const lobeMeshRef = useRef<THREE.InstancedMesh>(null);
   const shadowMeshRef = useRef<THREE.InstancedMesh>(null);
   const rainBlend = useEasedBlend(isRaining);
+  const cloudBlend = useEasedBlend(isCloudy);
 
   const { clouds, totalLobes } = useMemo(() => buildClouds(), []);
   const shadowTexture = useMemo(() => makeShadowTexture(), []);
@@ -130,10 +136,18 @@ export default function Clouds({ isRaining, timeScale }: CloudsProps) {
     const shadowMesh = shadowMeshRef.current;
     if (!lobeMesh) return;
     const move = delta * timeScale;
-    const blend = rainBlend.current;
+    const storm = rainBlend.current;
+    const presence = cloudBlend.current;
 
     const mat = lobeMesh.material as THREE.MeshLambertMaterial;
-    mat.color.lerpColors(colors.clear, colors.rain, blend);
+    mat.color.lerpColors(colors.clear, colors.rain, storm);
+    mat.opacity = CLOUD_VISIBLE_OPACITY * presence;
+    lobeMesh.visible = presence > 0.01;
+    if (shadowMesh) {
+      const shadowMat = shadowMesh.material as THREE.MeshBasicMaterial;
+      shadowMat.opacity = SHADOW_VISIBLE_OPACITY * presence;
+      shadowMesh.visible = presence > 0.01;
+    }
 
     let i = 0;
     for (let c = 0; c < clouds.length; c++) {
@@ -147,12 +161,17 @@ export default function Clouds({ isRaining, timeScale }: CloudsProps) {
       if (center.z < -AREA_HALF) center.z += AREA_HALF * 2;
       if (center.z > AREA_HALF) center.z -= AREA_HALF * 2;
 
-      const y = spec.y - blend * RAIN_SINK;
+      const visibleScale = CLOUD_FADE_MIN_SCALE + (1 - CLOUD_FADE_MIN_SCALE) * presence;
+      const y = spec.y - storm * RAIN_SINK + (1 - presence) * CLOUD_HIDE_LIFT;
 
       for (const lobe of spec.lobes) {
         dummy.position.set(center.x + lobe.ox, y + lobe.oy, center.z + lobe.oz);
         dummy.rotation.set(0, 0, 0);
-        dummy.scale.set(lobe.scale, lobe.scale * 0.72, lobe.scale);
+        dummy.scale.set(
+          lobe.scale * visibleScale,
+          lobe.scale * 0.72 * visibleScale,
+          lobe.scale * visibleScale,
+        );
         dummy.updateMatrix();
         lobeMesh.setMatrixAt(i, dummy.matrix);
         i++;
@@ -175,12 +194,17 @@ export default function Clouds({ isRaining, timeScale }: CloudsProps) {
       {/* Lobus awan low-poly dengan flat shading yang menyatu dengan gaya pulau */}
       <instancedMesh ref={lobeMeshRef} args={[undefined, undefined, totalLobes]}>
         <icosahedronGeometry args={[0.55, 0]} />
-        <meshLambertMaterial flatShading transparent opacity={0.92} />
+        <meshLambertMaterial flatShading transparent opacity={CLOUD_VISIBLE_OPACITY} />
       </instancedMesh>
       {/* Bayangan decal lembut untuk setiap awan */}
       <instancedMesh ref={shadowMeshRef} args={[undefined, undefined, CLOUD_COUNT]}>
         <planeGeometry args={[1, 1]} />
-        <meshBasicMaterial map={shadowTexture} transparent depthWrite={false} />
+        <meshBasicMaterial
+          map={shadowTexture}
+          transparent
+          opacity={SHADOW_VISIBLE_OPACITY}
+          depthWrite={false}
+        />
       </instancedMesh>
     </group>
   );

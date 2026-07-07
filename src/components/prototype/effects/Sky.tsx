@@ -11,19 +11,29 @@ import { PALETTE, useEasedBlend } from "./weather";
 const SUN_ORBIT_RADIUS = 15;
 const SUN_ELEVATION_DEG = 30;
 const SUN_ORBIT_SPEED = 0.04; // rad per detik-simulasi
-const FOG_NEAR = 26;
-const FOG_FAR = 72;
+const FOG_NEAR = 64;
+const FOG_FAR = 170;
+const FOG_OFF_NEAR = 260;
+const FOG_OFF_FAR = 320;
+const FOG_RAIN_NEAR_SHIFT = -12;
+const FOG_RAIN_FAR_SHIFT = -28;
 
 interface SkyProps {
   graphicQuality: GraphicQuality;
   timeScale: TimeScale;
   isRaining: boolean;
+  isFoggy: boolean;
 }
 
 // Satu komponen untuk seluruh cahaya & warna atmosfer. Semua nilai yang
 // bergantung cuaca di-lerp lewat rainBlend sehingga hujan datang dan pergi
 // secara bertahap, tidak pernah berganti instan.
-export default function Sky({ graphicQuality, timeScale, isRaining }: SkyProps) {
+export default function Sky({
+  graphicQuality,
+  timeScale,
+  isRaining,
+  isFoggy,
+}: SkyProps) {
   const sunRef = useRef<THREE.DirectionalLight>(null);
   const hemiRef = useRef<THREE.HemisphereLight>(null);
   const fillRef = useRef<THREE.DirectionalLight>(null);
@@ -31,6 +41,7 @@ export default function Sky({ graphicQuality, timeScale, isRaining }: SkyProps) 
   const fogRef = useRef<THREE.Fog>(null);
   const angle = useRef(0);
   const rainBlend = useEasedBlend(isRaining);
+  const fogBlend = useEasedBlend(isFoggy);
 
   const colors = useMemo(
     () => ({
@@ -53,6 +64,7 @@ export default function Sky({ graphicQuality, timeScale, isRaining }: SkyProps) 
     if (!sun) return;
     if (timeScale > 0) angle.current += delta * timeScale * SUN_ORBIT_SPEED;
     const blend = rainBlend.current;
+    const fogPresence = fogBlend.current;
 
     // Orbit matahari (ketinggian konstan, azimuth berputar).
     const elev = SUN_ORBIT_RADIUS * Math.tan((SUN_ELEVATION_DEG * Math.PI) / 180);
@@ -94,6 +106,18 @@ export default function Sky({ graphicQuality, timeScale, isRaining }: SkyProps) 
     }
     if (fogRef.current) {
       fogRef.current.color.lerpColors(colors.fogClear, colors.fogRain, blend);
+      const fogOnNear = FOG_NEAR + blend * FOG_RAIN_NEAR_SHIFT;
+      const fogOnFar = FOG_FAR + blend * FOG_RAIN_FAR_SHIFT;
+      fogRef.current.near = THREE.MathUtils.lerp(
+        FOG_OFF_NEAR,
+        fogOnNear,
+        fogPresence,
+      );
+      fogRef.current.far = THREE.MathUtils.lerp(
+        FOG_OFF_FAR,
+        fogOnFar,
+        fogPresence,
+      );
     }
   });
 

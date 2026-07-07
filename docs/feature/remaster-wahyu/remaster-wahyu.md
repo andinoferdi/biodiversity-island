@@ -14,6 +14,8 @@ src/components/prototype/effects/
                  seededRandom (mulberry32), useEasedBlend
   Sky.tsx      → matahari orbit + warna dinamis, hemisphere/fill light,
                  background & fog scene (menggantikan DynamicSun + lampu inline)
+  FogLayer.tsx → fog banks world-space untuk POV/overview, default On,
+                 tetap aktif di Low graphics
   Clouds.tsx   → 8 awan low-poly deterministik (4–6 lobus icosahedron), drift
                  searah WIND dengan wrap 34×34, bayangan decal radial-gradient
                  (menggantikan RealisticClouds)
@@ -42,6 +44,12 @@ Awan drift `WIND.x/z × speed`, streak hujan miring `-WIND.x × 0.35` dan terdor
 
 ### Eased blend, bukan perubahan instan
 `useEasedBlend` menyimpan blend 0..1 di ref dan mengejarnya di `useFrame`. `Sky` me-lerp warna langit/fog/matahari, `Clouds` me-lerp `material.color` dan menurunkan altitude (`RAIN_SINK`), `Rain` menskalakan jumlah tetes aktif — hujan datang dan pergi bertahap ~2.5 detik. Komponen `Rain` tetap terpasang saat cerah dan hanya melewati kerja frame ketika `blend ≤ 0.01` (menggantikan `if (!isRaining) return null` yang instan).
+
+### Cloud Toggle Fade Follow-Up
+Clouds On/Off kini mengikuti pola arsitektur yang sama dengan Rain On/Off: komponen tetap mounted dan menerima target boolean. `Clouds.tsx` memakai `cloudBlend = useEasedBlend(isCloudy)` khusus untuk presence awan, terpisah dari `rainBlend` untuk warna storm dan altitude hujan. Saat Clouds Off, opacity awan dan bayangan memudar sambil lobus awan sedikit mengecil dan terangkat; saat Clouds On, gerakan itu dibalik tanpa reset posisi wind-drift.
+
+### Fog Toggle dan FogLayer POV Follow-Up
+Fog kini punya toggle sendiri, default On, dan tidak ikut dimatikan oleh tier Low. `Sky.tsx` tetap memasang scene-level `<fog attach="fog">`, tetapi range fog dikontrol oleh `fogBlend = useEasedBlend(isFoggy)` sehingga Fog Off hanya mendorong `near/far` jauh keluar area pandang, bukan unmount mendadak. Scene fog sengaja dibuat sebagai distant atmosphere yang halus agar tidak memutihkan seluruh overview; kabut utama yang harus terasa di overview dan POV dipindahkan ke `FogLayer.tsx`. Bug kabut hilang saat Enter POV terjadi karena Three.js scene fog berbasis jarak kamera: kamera POV dekat permukaan membuat objek sekitar berada sebelum `FOG_NEAR`. Untuk itu `FogLayer.tsx` menambahkan fog banks tipis dan billboard haze rendah di world-space yang tetap terlihat dari kamera orthographic maupun PerspectiveCamera, tetap deterministik, dan tetap aktif di Low graphics.
 
 ### Seeded RNG di render, `Math.random()` hanya di frame loop
 Layout awan dibangun dengan `seededRandom(20260706)` di `useMemo`. Respawn tetes hujan memakai `Math.random()` tetapi hanya di dalam `useFrame` — React Compiler (`react-hooks/purity`) menolak `Math.random()` saat render, sehingga inisialisasi malas array tetes juga dipindah ke dalam frame loop.

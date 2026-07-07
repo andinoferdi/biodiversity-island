@@ -89,6 +89,7 @@ export default function BiodiversityPrototype() {
   const [graphicQuality, setGraphicQuality] = useState<GraphicQuality>("high");
   const [isRaining, setIsRaining] = useState(false);
   const [isCloudy, setIsCloudy] = useState(true);
+  const [isFoggy, setIsFoggy] = useState(true);
   const [isPOV, setIsPOV] = useState(false);
   const [vitals, setVitals] = useState<AnimalVitals>(INITIAL_VITALS);
   const [population, setPopulation] = useState<AnimalSpawn[]>(ANIMAL_SPAWNS);
@@ -177,6 +178,7 @@ export default function BiodiversityPrototype() {
         graphicQuality={graphicQuality}
         isRaining={isRaining}
         isCloudy={isCloudy}
+        isFoggy={isFoggy}
         isPOV={isPOV}
       />
 
@@ -244,6 +246,18 @@ export default function BiodiversityPrototype() {
             }`}
           >
             Clouds {isCloudy ? "On" : "Off"}
+          </button>
+          <button
+            type="button"
+            aria-pressed={isFoggy}
+            onClick={() => setIsFoggy(!isFoggy)}
+            className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
+              isFoggy
+                ? "bg-slate-300 text-slate-900"
+                : "bg-slate-800 text-slate-300 hover:bg-slate-700"
+            }`}
+          >
+            Fog {isFoggy ? "On" : "Off"}
           </button>
         </div>
         <ul className="mt-2 space-y-1 text-sm text-slate-300">
