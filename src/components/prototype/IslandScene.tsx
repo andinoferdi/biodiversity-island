@@ -126,20 +126,24 @@ function Sea() {
 // HTML loading screen shown until the 2.3 MB terrain GLB registers itself:
 // the thumbnail render of the island fills the screen so it is never blank.
 function TerrainLoadingOverlay() {
-  const ready = useSyncExternalStore(
+  const terrainReady = useSyncExternalStore(
     subscribeTerrain,
     isTerrainReady,
     () => false,
   );
   const { progress } = useProgress();
-  if (ready) return null;
+  // Wait for BOTH: terrain BVH built (raycasts work) AND all GLBs fully
+  // downloaded (animals, environment, terrain). The preload calls in
+  // AnimalModel.tsx and EnvironmentModels.tsx feed into drei's progress.
+  const allReady = terrainReady && progress >= 100;
+  if (allReady) return null;
   return (
     <div
       className="absolute inset-0 z-10 flex items-end justify-center bg-slate-950 bg-cover bg-center pb-12"
       style={{ backgroundImage: `url(${TERRAIN_THUMBNAIL_URL})` }}
     >
       <div className="rounded-lg bg-slate-950/80 px-4 py-2 text-sm text-slate-100">
-        Loading terrain… {Math.round(progress)}%
+        Loading island… {Math.round(progress)}%
       </div>
     </div>
   );
