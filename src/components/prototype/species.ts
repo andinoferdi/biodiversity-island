@@ -39,6 +39,8 @@ export interface Species {
   hungerRate: number;
   thirstRate: number;
   consumeRate: number;
+  // Offset kamera orang-pertama saat hewan dikontrol manual (mode POV).
+  povCamera?: { height: number; back: number; pitch: number };
   // Real AI parameters
   predatorOf?: string[];
   fov?: number; // Field of view in radians (default ~2.0)
@@ -119,6 +121,7 @@ export const SPECIES: Species[] = [
     animations: { walk: "metarig|Fly", idle: "metarig|Fly", eat: "metarig|Fly" },
     neverStops: true,
     roamRadius: 12,
+    povCamera: { height: 1.2, back: 1.5, pitch: 0.6 },
     selectionRadius: 0.2,
     moveSpeed: 0.6,
     turnSpeed: 3.4,

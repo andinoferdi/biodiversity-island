@@ -1,9 +1,14 @@
 "use client";
 
-import { Suspense, useEffect, useRef } from "react";
+import { Suspense, useEffect, useMemo, useRef } from "react";
 import { useFrame, type ThreeEvent } from "@react-three/fiber";
 import { PerspectiveCamera } from "@react-three/drei";
-import { MathUtils, type Group } from "three";
+import {
+  MathUtils,
+  Vector3,
+  type Group,
+  type PerspectiveCamera as ThreePerspectiveCamera,
+} from "three";
 import AnimalModel from "./AnimalModel";
 import { getSpecies, type AnimalSpawn, type Species } from "./species";
 import { biomeForHeight } from "./biomes";
@@ -55,6 +60,8 @@ const WANDER_LOOKAHEAD = 1.5;
 const WANDER_TRIES = 8;
 // How quickly the visual Y eases toward the raycast ground height.
 const GROUND_SNAP_SPEED = 12;
+// Longest simulation step a single frame may take (hidden-tab safety).
+const MAX_FRAME_DELTA = 0.1;
 
 function distanceTo(x: number, z: number, spot: ResourceSpot) {
   return Math.hypot(spot.x - x, spot.z - z);
@@ -196,6 +203,140 @@ function sense(
   return r;
 }
 
+const CONTROL_KEYS = ["w", "a", "s", "d", "ArrowUp", "ArrowLeft", "ArrowDown", "ArrowRight", " "] as const;
+type ControlKey = (typeof CONTROL_KEYS)[number];
+
+// Keyboard state untuk hewan yang sedang dikontrol manual. Ref, bukan
+// state: dibaca setiap frame oleh useFrame tanpa memicu render.
+function useKeyboardControls(active: boolean) {
+  const keys = useRef<Record<ControlKey, boolean>>(
+    Object.fromEntries(CONTROL_KEYS.map((k) => [k, false])) as Record<ControlKey, boolean>,
+  );
+  useEffect(() => {
+    if (!active) return;
+    const isControlKey = (key: string): key is ControlKey =>
+      (CONTROL_KEYS as readonly string[]).includes(key);
+    const down = (e: KeyboardEvent) => { if (isControlKey(e.key)) keys.current[e.key] = true; };
+    const up = (e: KeyboardEvent) => { if (isControlKey(e.key)) keys.current[e.key] = false; };
+    window.addEventListener("keydown", down);
+    window.addEventListener("keyup", up);
+    const snapshot = keys.current;
+    return () => {
+      window.removeEventListener("keydown", down);
+      window.removeEventListener("keyup", up);
+      // Reset saat deselect agar hewan tidak "jalan sendiri" saat dipilih lagi.
+      for (const k of CONTROL_KEYS) snapshot[k] = false;
+    };
+  }, [active]);
+  return keys;
+}
+
+// Gerak manual (mode kontrol keyboard).
+const JUMP_VELOCITY = 4;
+const GRAVITY = 15;
+const MANUAL_TURN_MULT = 2.0;
+
+const POV_DEFAULT = { height: 0.3, back: 0.6, pitch: 0.15 };
+const POV_DAMPING = 6;
+
+// Kamera POV mengejar offset targetnya dengan damping ringan sehingga
+// posisi kamera bergerak halus dan tidak menempel kaku. Saat masuk POV,
+// kamera mulai sedikit lebih tinggi dan lebih jauh. Saat keluar POV, kamera
+// langsung kembali ke ortografis. Transisi antarproyeksi tidak digunakan.
+function PovCamera({ species }: { species: Species }) {
+  const camRef = useRef<ThreePerspectiveCamera>(null);
+  const pov = species.povCamera ?? POV_DEFAULT;
+  const target = useMemo(
+    () =>
+      new Vector3(
+        0,
+        (species.modelYOffset || 0) + species.selectionRadius * 1.2 + pov.height,
+        -species.selectionRadius * 2.5 - pov.back,
+      ),
+    [species, pov],
+  );
+  useFrame((_, delta) => {
+    const cam = camRef.current;
+    if (!cam) return;
+    cam.position.lerp(target, Math.min(1, delta * POV_DAMPING));
+  });
+  return (
+    <PerspectiveCamera
+      ref={camRef}
+      makeDefault
+      position={[target.x, target.y + 0.4, target.z - 0.3]}
+      rotation={[pov.pitch, Math.PI, 0]}
+      fov={75}
+    />
+  );
+}
+
+// Bobot dan radius potential-field obstacle avoidance (nilai identik dengan
+// implementasi inline sebelumnya, hanya diberi nama).
+const AVOID_GOAL_WEIGHT = 0.4;      // bobot arah tujuan saat blending
+const AVOID_CLIFF_PUSH = 0.8;       // dorongan menjauh dari tebing/air terlarang
+const AVOID_LOOKAHEAD = 1.0;        // radius sampling lingkaran
+const AVOID_SLOWDOWN_THRESHOLD = 1.0;
+const AVOID_SLOWDOWN_FACTOR = 0.6;
+const AVOID_TURN_BOOST = 3.0;
+
+interface AvoidanceResult { x: number; z: number; strength: number }
+
+// Potential field: dorongan menjauh dari vegetasi dan sel terlarang di
+// sekeliling hewan. Saat status "Seeking water", air di depan adalah tujuan,
+// bukan penghalang (perbaikan bug kolaps populasi — lihat Task 1).
+function computeAvoidance(
+  m: { x: number; z: number; status: AnimalStatus },
+  species: Species,
+  stranded: boolean,
+): AvoidanceResult {
+  let avoidX = 0;
+  let avoidZ = 0;
+  let avoidStrength = 0;
+
+  if (species.id !== "hawk") {
+    for (const v of VEGETATION) {
+      const dx = m.x - v.x;
+      const dz = m.z - v.z;
+      const dist = Math.hypot(dx, dz);
+      // Scale radius based on vegetation scale and animal size
+      const safeRadius = (species.selectionRadius * 0.5) + (v.scale * 0.6) + 0.4;
+      if (dist < safeRadius) {
+        const push = Math.pow((safeRadius - dist) / safeRadius, 2);
+        avoidX += (dx / dist) * push;
+        avoidZ += (dz / dist) * push;
+        avoidStrength += push;
+      }
+    }
+  }
+
+  // Avoid cliffs and invalid terrain (sample in a circle).
+  // While the animal is heading for a drink, water ahead is the
+  // destination, not an obstacle: repelling from it pinned thirsty
+  // animals at ~0.8-1.0 from the bank — just outside DRINK_RANGE
+  // (0.6) — until they died of dehydration. The hard safety check
+  // in the caller still prevents actually stepping into water.
+  const waterIsGoal = m.status === "Seeking water";
+  for (let angle = 0; angle < Math.PI * 2; angle += Math.PI / 4) {
+    const cx = m.x + Math.sin(angle) * AVOID_LOOKAHEAD;
+    const cz = m.z + Math.cos(angle) * AVOID_LOOKAHEAD;
+    const ground = sampleGround(cx, cz);
+    const impassable = !ground || ground.normalY < MIN_GROUND_NORMAL_Y;
+    const wrongBiome =
+      ground &&
+      !canOccupy(species, ground) &&
+      !stranded &&
+      !(waterIsGoal && ground.water);
+    if (impassable || wrongBiome) {
+      avoidX -= Math.sin(angle) * AVOID_CLIFF_PUSH; // Push away from this angle
+      avoidZ -= Math.cos(angle) * AVOID_CLIFF_PUSH;
+      avoidStrength += AVOID_CLIFF_PUSH;
+    }
+  }
+
+  return { x: avoidX, z: avoidZ, strength: avoidStrength };
+}
+
 export default function Animal({
   spawn,
   species,
@@ -209,47 +350,7 @@ export default function Animal({
   isPOV,
 }: AnimalProps) {
   const groupRef = useRef<Group>(null);
-
-  const keys = useRef({
-    w: false,
-    a: false,
-    s: false,
-    d: false,
-    ArrowUp: false,
-    ArrowLeft: false,
-    ArrowDown: false,
-    ArrowRight: false,
-    " ": false,
-  });
-
-  useEffect(() => {
-    if (!selected) return;
-
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key in keys.current) {
-        keys.current[e.key as keyof typeof keys.current] = true;
-      }
-    };
-
-    const handleKeyUp = (e: KeyboardEvent) => {
-      if (e.key in keys.current) {
-        keys.current[e.key as keyof typeof keys.current] = false;
-      }
-    };
-
-    window.addEventListener("keydown", handleKeyDown);
-    window.addEventListener("keyup", handleKeyUp);
-
-    return () => {
-      window.removeEventListener("keydown", handleKeyDown);
-      window.removeEventListener("keyup", handleKeyUp);
-      
-      // Reset keys when deselected
-      Object.keys(keys.current).forEach(k => {
-        keys.current[k as keyof typeof keys.current] = false;
-      });
-    };
-  }, [selected]);
+  const keys = useKeyboardControls(selected);
 
   useEffect(() => {
     return () => {
@@ -309,8 +410,13 @@ export default function Animal({
     if (!here) return;
 
     // Every mutation below uses dt, so Pause (0) freezes the whole simulation
-    // and 4x accelerates it uniformly and frame-rate independently.
-    const dt = delta * timeScale;
+    // and 4x accelerates it uniformly and frame-rate independently. The raw
+    // delta is clamped: when the tab is hidden the frame loop stops entirely,
+    // and the first frame after it resumes reports the whole gap as one huge
+    // delta — unclamped, that single frame pinned every need at max AND
+    // pushed criticalTimer past DEATH_AFTER_CRITICAL, mass-killing the
+    // population on tab refocus.
+    const dt = Math.min(delta, MAX_FRAME_DELTA) * timeScale;
 
     if (dt > 0) {
       m.avoidanceTimer = Math.max(0, m.avoidanceTimer - dt);
@@ -352,7 +458,7 @@ export default function Animal({
       }
 
       if (m.jumpY > 0 || m.vy !== 0) {
-        m.vy -= 15 * dt; // gravity
+        m.vy -= GRAVITY * dt;
         m.jumpY += m.vy * dt;
         if (m.jumpY <= 0) {
           m.jumpY = 0;
@@ -391,7 +497,7 @@ export default function Animal({
         let forward = 0;
 
         if (k[" "] && m.jumpY === 0) {
-          m.vy = 4;
+          m.vy = JUMP_VELOCITY;
         }
 
         if (k.w || k.ArrowUp) forward = 1;
@@ -400,7 +506,7 @@ export default function Animal({
         if (k.d || k.ArrowRight) turn = -1;
 
         if (turn !== 0) {
-          m.heading += turn * species.turnSpeed * dt * 2.0;
+          m.heading += turn * species.turnSpeed * dt * MANUAL_TURN_MULT;
           m.headingTarget = m.heading;
         }
 
@@ -448,16 +554,17 @@ export default function Animal({
           distanceTo(m.x, m.z, foodSpot) < foodSpot.radius + CONSUME_MARGIN;
 
         // "At water": swimmers and waders drink wherever they float; land
-        // animals must stand next to the nearest river-bank point.
-        const waterEdge =
-          species.locomotion === "terrestrial"
-            ? nearestWaterEdge(m.x, m.z)
-            : null;
-        const atWater =
-          species.locomotion === "terrestrial"
-            ? waterEdge !== null &&
-              Math.hypot(waterEdge.x - m.x, waterEdge.z - m.z) < DRINK_RANGE
-            : here.water;
+        // animals and birds must stand/hover next to the nearest river-bank
+        // point. (Aerial species used to require being over the water itself,
+        // but their seek target is a land bank cell, so they hovered exactly
+        // on the bank forever without ever registering as "at water".)
+        const drinksAtBank =
+          species.locomotion === "terrestrial" || species.locomotion === "aerial";
+        const waterEdge = drinksAtBank ? nearestWaterEdge(m.x, m.z) : null;
+        const atWater = drinksAtBank
+          ? waterEdge !== null &&
+            Math.hypot(waterEdge.x - m.x, waterEdge.z - m.z) < DRINK_RANGE
+          : here.water;
 
         let moving = true;
         if (m.eatPreyTimer > 0) {
@@ -524,15 +631,15 @@ export default function Animal({
                 );
                 const avgHeading = senseResult!.friendsHeading / senseResult!.friendsCount;
 
-                let totalSin = Math.sin(candidateHeading) + Math.sin(avgHeading) * 0.3 + Math.sin(towardCenter) * 0.2;
-                let totalCos = Math.cos(candidateHeading) + Math.cos(avgHeading) * 0.3 + Math.cos(towardCenter) * 0.2;
+                const totalSin = Math.sin(candidateHeading) + Math.sin(avgHeading) * 0.3 + Math.sin(towardCenter) * 0.2;
+                const totalCos = Math.cos(candidateHeading) + Math.cos(avgHeading) * 0.3 + Math.cos(towardCenter) * 0.2;
                 candidateHeading = Math.atan2(totalSin, totalCos);
               }
 
               if (senseResult!.fleeX !== 0 || senseResult!.fleeZ !== 0) {
                 const sepHeading = Math.atan2(senseResult!.fleeX, senseResult!.fleeZ);
-                let totalSin = Math.sin(candidateHeading) + Math.sin(sepHeading) * 0.8;
-                let totalCos = Math.cos(candidateHeading) + Math.cos(sepHeading) * 0.8;
+                const totalSin = Math.sin(candidateHeading) + Math.sin(sepHeading) * 0.8;
+                const totalCos = Math.cos(candidateHeading) + Math.cos(sepHeading) * 0.8;
                 candidateHeading = Math.atan2(totalSin, totalCos);
               }
 
@@ -551,8 +658,8 @@ export default function Animal({
             }
           } else if (m.status === "Roaming" && (senseResult!.fleeX !== 0 || senseResult!.fleeZ !== 0)) {
              const sepHeading = Math.atan2(senseResult!.fleeX, senseResult!.fleeZ);
-             let totalSin = Math.sin(m.headingTarget) + Math.sin(sepHeading) * 0.15;
-             let totalCos = Math.cos(m.headingTarget) + Math.cos(sepHeading) * 0.15;
+             const totalSin = Math.sin(m.headingTarget) + Math.sin(sepHeading) * 0.15;
+             const totalCos = Math.cos(m.headingTarget) + Math.cos(sepHeading) * 0.15;
              m.headingTarget = Math.atan2(totalSin, totalCos);
           }
         }
@@ -592,44 +699,13 @@ export default function Animal({
             m.headingTarget = Math.atan2(-m.x, -m.z);
           }
 
-          // Compute Potential Field for Obstacles (mapping all exact object positions)
-          let avoidX = 0, avoidZ = 0;
-          let avoidStrength = 0;
-          
-          if (species.id !== "hawk") {
-            for (const v of VEGETATION) {
-              const dx = m.x - v.x;
-              const dz = m.z - v.z;
-              const dist = Math.hypot(dx, dz);
-              // Scale radius based on vegetation scale and animal size
-              const safeRadius = (species.selectionRadius * 0.5) + (v.scale * 0.6) + 0.4;
-              if (dist < safeRadius) {
-                 const push = Math.pow((safeRadius - dist) / safeRadius, 2);
-                 avoidX += (dx / dist) * push;
-                 avoidZ += (dz / dist) * push;
-                 avoidStrength += push;
-              }
-            }
-          }
-          
-          // Avoid cliffs and invalid terrain (sample in a circle)
-          const lookahead = 1.0;
-          for (let angle = 0; angle < Math.PI * 2; angle += Math.PI / 4) {
-              const cx = m.x + Math.sin(angle) * lookahead;
-              const cz = m.z + Math.cos(angle) * lookahead;
-              const ground = sampleGround(cx, cz);
-              if (!ground || ground.normalY < MIN_GROUND_NORMAL_Y || (!canOccupy(species, ground) && !stranded)) {
-                  avoidX -= Math.sin(angle) * 0.8; // Push away from this angle
-                  avoidZ -= Math.cos(angle) * 0.8;
-                  avoidStrength += 0.8;
-              }
-          }
+          const avoid = computeAvoidance(m, species, stranded);
 
           let finalHeadingTarget = m.headingTarget;
-          if (avoidStrength > 0) {
+          if (avoid.strength > 0) {
              // Blend current target heading with avoidance vector
-             const targetVecX = Math.sin(m.headingTarget) * 0.4 + avoidX;
-             const targetVecZ = Math.cos(m.headingTarget) * 0.4 + avoidZ;
+             const targetVecX = Math.sin(m.headingTarget) * AVOID_GOAL_WEIGHT + avoid.x;
+             const targetVecZ = Math.cos(m.headingTarget) * AVOID_GOAL_WEIGHT + avoid.z;
              finalHeadingTarget = Math.atan2(targetVecX, targetVecZ);
           }
 
@@ -644,10 +720,10 @@ export default function Animal({
           else if (m.status === "Seeking food" || m.status === "Seeking water") speedMult = 1.4;
           
           // If heavily avoiding something, slow down slightly so they don't clip through while turning
-          if (avoidStrength > 1.0) speedMult *= 0.6;
+          if (avoid.strength > AVOID_SLOWDOWN_THRESHOLD) speedMult *= AVOID_SLOWDOWN_FACTOR;
 
           // Turn much faster when actively avoiding objects to prevent getting stuck
-          m.heading += diff * Math.min(1, species.turnSpeed * (speedMult > 1 ? 1.5 : 1.0) * dt * (avoidStrength > 0 ? 3.0 : 1.0));
+          m.heading += diff * Math.min(1, species.turnSpeed * (speedMult > 1 ? 1.5 : 1.0) * dt * (avoid.strength > 0 ? AVOID_TURN_BOOST : 1.0));
 
           const nextX = m.x + Math.sin(m.heading) * species.moveSpeed * speedMult * dt;
           const nextZ = m.z + Math.cos(m.heading) * species.moveSpeed * speedMult * dt;
@@ -729,18 +805,7 @@ export default function Animal({
       onPointerOver={handlePointerOver}
       onPointerOut={handlePointerOut}
     >
-      {isPOV && (
-        <PerspectiveCamera
-          makeDefault
-          position={[
-            0, 
-            (species.modelYOffset || 0) + species.selectionRadius * 1.2 + (species.id === "hawk" ? 1.2 : 0.3), 
-            -species.selectionRadius * 2.5 - (species.id === "hawk" ? 1.5 : 0.6)
-          ]}
-          rotation={[species.id === "hawk" ? 0.6 : 0.15, Math.PI, 0]}
-          fov={75}
-        />
-      )}
+      {isPOV && <PovCamera species={species} />}
       {/* The per-animal Suspense keeps this animal's frame loop and the rest
           of the population running while its GLB streams in. Selection
           feedback is the ring below (cloned GLB materials are shared, so
