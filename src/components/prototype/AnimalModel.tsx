@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { useFrame } from "@react-three/fiber";
 import { Clone, useAnimations, useGLTF } from "@react-three/drei";
 import type { AnimationAction, Group } from "three";
@@ -63,8 +63,23 @@ function AnimatedModel({ species, timeScale, statusRef }: AnimalModelProps) {
     });
     return cloned;
   }, [scene]);
-  const { actions } = useAnimations(animations, groupRef);
+  // Attach AnimationMixer to the clone itself (not groupRef) so the mixer
+  // finds the cloned skeleton bones immediately — groupRef may not have
+  // children yet when useAnimations runs on mount, causing T-pose.
+  const cloneRef = useRef(clone);
+  const { actions } = useAnimations(animations, cloneRef);
   const activeClip = useRef<string | null>(null);
+
+  // Start the default animation immediately on mount so the model never
+  // appears in T-pose, even if the frame loop hasn't ticked yet.
+  useEffect(() => {
+    const defaultClip = clipFor("Roaming", species, actions);
+    if (!defaultClip) return;
+    const action = actions[defaultClip];
+    if (!action) return;
+    action.reset().fadeIn(0).play();
+    activeClip.current = defaultClip;
+  }, [actions, species]);
 
   // Clip switching and playback speed are handled per frame (cheap ref
   // compares + AnimationAction method calls) so the deer follows the
