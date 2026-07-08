@@ -1,5 +1,5 @@
 import { Box3, Raycaster, Vector3, type Object3D } from "three";
-import { WATER_LEVEL, MIN_GROUND_NORMAL_Y } from "./simulation";
+import { WATER_LEVEL, MIN_GROUND_NORMAL_Y, WALK_RADIUS } from "./simulation";
 
 // Runtime terrain access shared by every animal: the mounted terrain.glb
 // scene registers itself here, and all ground queries raycast against it.
@@ -201,6 +201,12 @@ function buildWaterEdges(): EdgePoint[] {
         j < GRID_N - 1 ? cells[(j + 1) * GRID_N + i] : null,
       ];
       if (neighbors.some((n) => n?.water)) {
+        // Buang tepi pantai: skirt luar mesh turun di bawah WATER_LEVEL
+        // (laut), sehingga tanpa filter ini hewan di barat daya dikirim ke
+        // pantai di luar WALK_RADIUS — target yang mustahil dicapai karena
+        // clamp, lalu mereka berosilasi di ring steer 0.85R sampai mati
+        // dehidrasi. Hanya tepi sungai di dalam radius jelajah yang sah.
+        if (Math.hypot(xs[i], zs[j]) > WALK_RADIUS - 0.3) continue;
         edges.push({ x: xs[i], z: zs[j] });
       }
     }

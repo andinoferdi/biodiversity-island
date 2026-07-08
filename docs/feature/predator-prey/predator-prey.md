@@ -1,5 +1,50 @@
 # Predator–Prey — Biodiversity Island
 
+> **Update 2026-07-08 (sesi balancing, branch `andino/feat/predator-balancing` dari `main`/`3e0030b`).**
+> Banyak isi dokumen di bawah sudah **usang**: sejak commit `3e0030b` ("Feat: change animal behviour logic")
+> logika AI dipindah ke `animalPerception.ts` + `animalBrain.ts` (TF.js) + `animalDecision.ts` + `pathfinding.ts`
+> (A*). Fungsi `sense()` yang dijelaskan di bawah **sudah tidak ada**. "Bug kolaps populasi total" di Known
+> Limitations lama juga **sudah FIXED** (lihat `docs/feature/remaster-wahyu/remaster-wahyu.md`). Bagian di
+> bawah dipertahankan sebagai catatan sejarah; status terkini ada di section **"Balancing 2026-07-08"** ini.
+>
+> ## Balancing 2026-07-08 — status terkini
+>
+> **Hasil:** monokultur hawk (baseline: seluruh mangsa punah ±2 menit-sim) → **7 spesies koeksis 5+ menit-sim**,
+> tanpa collapse-ke-0, tanpa monokultur predator. Batasan tersisa: predator boom-lalu-bust dan punah di akhir,
+> menyisakan duopoli herbivora deer+horse.
+>
+> **Mekanisme (konstanta bernama di `simulation.ts`, field di `species.ts`):**
+> - **Kill gating** (`checkKilled`): hanya predator status `"Hunting"` yang membunuh + satu kill per buruan
+>   (`killRewards.has(id)` guard). Menghapus "free kill" predator kenyang — akar monokultur.
+> - **`HUNT_COOLDOWN=60`**: jeda berburu setelah makan buruan.
+> - **`HUNT_GIVE_UP=8` + `HUNT_GIVE_UP_COOLDOWN=10`**: kejaran gagal 8 detik-sim → menyerah. Kejaran jadi
+>   bisa gagal (tanpa ini setiap kejaran = kill, salah satu pihak pasti punah).
+> - **`Species.huntHungerThreshold`** (hawk 70, wolf 60): predator berburu hanya saat benar-benar lapar;
+>   berhenti berburu untuk minum saat `thirst < CRITICAL_LEVEL`.
+> - **`FLEE_DISTANCE=4`**: mangsa kabur hanya saat predator dekat (dulu: sepanjang terlihat → lari terus,
+>   mati kelaparan). Fish (aquatic) kini ikut Fleeing.
+> - **Reproduksi decoupled**: mangsa `Species.reproduceAfter=30`; predator `PREDATOR_REPRODUCE_KILLS=3`
+>   (beranak per 3 kill, bukan timer well-fed — siklus hunger predator tak pernah cukup well-fed).
+> - **Predator tak merumput**: `foodSpotsFor`/perception `[]` untuk predator — hidup murni dari kill.
+>
+> **8 bug/regresi rewrite `3e0030b` diperbaiki** (ditemukan lewat death-log per-individu, Playwright headed):
+> tfjs hilang di package.json; free-kill; predator merumput; avoidance menolak air saat Seeking water;
+> boundary-steer dibuang (tulis `d.headingTarget` padahal `finalTarget` baca `m.headingTarget`); duck tak bisa
+> minum (`drinksAtBank` tak mencakup amphibian); mass-kill satu terkaman; **`buildWaterEdges` kirim tepi pantai
+> laut di luar `WALK_RADIUS` sebagai target minum** → dehidrasi massal (fix: buang tepi > `WALK_RADIUS-0.3`,
+> `WALK_RADIUS` 6.5→6.0).
+>
+> **Validasi:** `rtk npm run lint` 0/0 (juga bersihkan 14 sisa `3e0030b`), `rtk npm run build` lulus,
+> sensus 10 menit @4× tak pernah 0 & tanpa osilasi ekstrem.
+>
+> **Known limitation utama:** predator punah (boom-bust) — ketegangan fundamental predator-vs-basis-mangsa,
+> bukan bug; butuh mekanisme baru (scavenging / metabolisme adaptif / respawn migrasi), keputusan produk,
+> masuk plan tiga-krisis berikutnya.
+>
+> ---
+>
+> ## (Historis, sebagian usang) Dokumentasi awal predator-prey
+
 Dokumentasi untuk programmer berikutnya. Spesifikasi asli ada di [predator-prey-prompt.md](./predator-prey-prompt.md), rencana di [predator-prey-plan.md](./predator-prey-plan.md) dan [technical plan/2026-07-06-predator-prey.md](./technical%20plan/2026-07-06-predator-prey.md). Fitur ini melengkapi fondasi predator–mangsa yang diletakkan commit "enhance animal AI" (`predatorOf`, `canSee`, status `Hunting`/`Fleeing`, registry `liveAnimals`) — bukan membangun ulang.
 
 ## Ringkasan

@@ -1,5 +1,5 @@
 import { Box3 } from "three";
-import { sampleGround, VEGETATION, isTerrainReady, subscribeTerrain, setTerrainRoot } from "./terrain";
+import { sampleGround, VEGETATION, isTerrainReady, subscribeTerrain } from "./terrain";
 import type { Locomotion } from "./species";
 import { MIN_GROUND_NORMAL_Y } from "./simulation";
 
@@ -72,7 +72,7 @@ export function getNavGrid(): NavGrid | null {
       const ground = sampleGround(x, z);
       
       let walkable = ground !== null && ground.normalY >= MIN_GROUND_NORMAL_Y;
-      let water = ground ? ground.water : false;
+      const water = ground ? ground.water : false;
 
       // Check vegetation collision
       if (walkable) {

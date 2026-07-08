@@ -10,9 +10,9 @@ import {
 } from "./animalBrain";
 import type { AnimalStatus } from "./simulation";
 import {
-  NEED_MAX, SEEK_THRESHOLD, SATISFIED_LEVEL, WELL_FED_LEVEL,
+  SEEK_THRESHOLD, SATISFIED_LEVEL, WELL_FED_LEVEL, CRITICAL_LEVEL,
   HUNT_HUNGER_THRESHOLD, KILL_RANGE, FOOD_SPOTS,
-  liveAnimals, killRewards, HEARING_RANGE,
+  liveAnimals, killRewards, HEARING_RANGE, FLEE_DISTANCE,
 } from "./simulation";
 import { nearestWaterEdge, sampleGround } from "./terrain";
 import { getSpecies, type Species } from "./species";
@@ -32,6 +32,10 @@ function nearest2D<T extends { x: number; z: number }>(
 }
 
 function foodSpotsFor(species: Species) {
+  // Predator hanya makan dari hasil buruan (kill reward) — tanpa ini mereka
+  // ikut merumput di petak makanan, tidak pernah lapar sungguhan, dan
+  // beranak tanpa batas meski mangsa sudah habis (mesin monokultur).
+  if (species.predatorOf?.length) return [];
   return FOOD_SPOTS.filter(s =>
     species.locomotion === "aquatic" ? s.biomeId === "river" : s.biomeId !== "river"
   );
@@ -52,6 +56,8 @@ export interface DecisionInput {
   actionProbs: Float32Array; // [5] from TF.js
   wanderTimer: number;
   avoidanceTimer: number;
+  // Sisa hunt cooldown (detik-simulasi); > 0 berarti dilarang berburu.
+  huntCooldown: number;
   stranded: boolean;
   isRaining: boolean;
 }
@@ -79,8 +85,10 @@ export function decide(inp: DecisionInput): Decision {
     ? Math.hypot(foodSpot.x - x, foodSpot.z - z) < foodSpot.radius + CONSUME_MARGIN
     : false;
 
-  const drinksAtBank =
-    species.locomotion === "terrestrial" || species.locomotion === "aerial";
+  // Semua non-aquatic minum di tepi sungai. Amphibian juga: target seek-nya
+  // adalah sel bank (darat), jadi syarat "berdiri di air" tidak pernah
+  // terpenuhi dan bebek mati dehidrasi sambil mengitari tepi sungai.
+  const drinksAtBank = species.locomotion !== "aquatic";
   const waterEdge = drinksAtBank ? nearestWaterEdge(x, z) : null;
   const ground = sampleGround(x, z);
   const atWater = drinksAtBank
@@ -95,8 +103,9 @@ export function decide(inp: DecisionInput): Decision {
   const sightDist = species.sightDistance ?? 10;
   const fovHalf   = (species.fov ?? 2.0) / 2;
   const isPredator = (species.predatorOf?.length ?? 0) > 0;
+  const huntThreshold = species.huntHungerThreshold ?? HUNT_HUNGER_THRESHOLD;
 
-  for (const [id, state] of liveAnimals.entries()) {
+  for (const state of liveAnimals.values()) {
     const dx = state.x - x; const dz = state.z - z;
     const dist = Math.hypot(dx, dz);
     if (dist > Math.max(sightDist, HEARING_RANGE)) continue;
@@ -109,13 +118,17 @@ export function decide(inp: DecisionInput): Decision {
     }
 
     const other = getSpecies(state.speciesId);
-    if (other.predatorOf?.includes(species.id) && dist < nearestThreatDist) {
+    if (other.predatorOf?.includes(species.id) &&
+        dist < FLEE_DISTANCE && dist < nearestThreatDist) {
       nearestThreatDist = dist;
       threatPresent = true;
       // Flee direction: away from threat
       threatHeading = Math.atan2(x - state.x, z - state.z);
     }
-    if (isPredator && hunger > HUNT_HUNGER_THRESHOLD &&
+    // thirst < CRITICAL: predator yang hampir mati haus harus minum dulu —
+    // tanpa gerbang ini Hunting terus menimpa Drinking sampai mati dehidrasi.
+    if (isPredator && hunger > huntThreshold && inp.huntCooldown <= 0 &&
+        inp.thirst < CRITICAL_LEVEL &&
         species.predatorOf!.includes(state.speciesId) && dist < nearestPreyDist) {
       nearestPreyDist = dist;
       preyPresent = true;
@@ -140,8 +153,9 @@ export function decide(inp: DecisionInput): Decision {
   let wanderTimer = inp.wanderTimer;
   let pathTarget: { x: number; z: number } | null = null;
 
-  // Priority 1: Threat — override everything
-  if (threatPresent && species.locomotion !== "aquatic") {
+  // Priority 1: Threat — override everything. Aquatic ikut kabur (berenang);
+  // gerbang gerak di Animal.tsx tetap menahannya di dalam air.
+  if (threatPresent) {
     status = "Fleeing";
     headingTarget = threatHeading;
     speedMult = 2.5;
@@ -208,7 +222,7 @@ export function decide(inp: DecisionInput): Decision {
       if (wanderTimer <= 0) {
         // Neural turn signal
         const netTurn = (pTurnR - pTurnL) * 0.8; // radians bias per decision
-        let candidate = heading + netTurn + (Math.random() - 0.5) * 0.6;
+        const candidate = heading + netTurn + (Math.random() - 0.5) * 0.6;
 
         // Validate candidate against terrain
         let found = false;
@@ -244,6 +258,14 @@ export function checkKilled(
 ): string | null {
   for (const [id, state] of liveAnimals.entries()) {
     if (id === selfId) continue;
+    // Hanya predator yang sedang berburu yang membunuh. Predator kenyang
+    // yang kebetulan lewat tidak lagi mendapat kill gratis (akar monokultur:
+    // kill gratis -> hunger selalu rendah -> reproduksi tanpa henti).
+    if (state.status !== "Hunting") continue;
+    // Satu kill per buruan: predator dengan reward yang belum diklaim tidak
+    // membunuh lagi frame ini — tanpa guard ini satu terkaman ke tengah
+    // kawanan memusnahkan semua mangsa dalam KILL_RANGE sekaligus.
+    if (killRewards.has(id)) continue;
     const dist = Math.hypot(state.x - x, state.z - z);
     if (dist >= KILL_RANGE) continue;
     const other = getSpecies(state.speciesId);
