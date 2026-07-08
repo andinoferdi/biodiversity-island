@@ -102,9 +102,8 @@ const listeners = new Set<() => void>();
 
 // Shared, recycled scratch objects — the frame loop never allocates.
 const raycaster = new Raycaster();
-// three-mesh-bvh honours this flag once drei <Bvh> installs its accelerated
-// raycast; it isn't part of three's Raycaster type, hence the cast.
-(raycaster as Raycaster & { firstHitOnly?: boolean }).firstHitOnly = true;
+// three-mesh-bvh handles standard raycasts very efficiently.
+// We remove firstHitOnly so we can pierce through tall tree canopies.
 const rayOrigin = new Vector3();
 const RAY_DOWN = new Vector3(0, -1, 0);
 const RAY_HEIGHT = 30;
@@ -126,46 +125,39 @@ export function isTerrainReady(): boolean {
 }
 
 // Drops a ray straight down at (x, z) and reports the topmost surface.
-// null = no terrain there (either still loading, or past the mesh edge —
-// the world boundary).
-export function sampleGround(x: number, z: number): GroundSample | null {
+// If currentY is provided, ignores any surfaces that are more than 1.5 units above it (e.g. tree canopies).
+// null = no terrain there (either still loading, or past the mesh edge).
+export function sampleGround(x: number, z: number, currentY?: number): GroundSample | null {
   if (!terrainRoot) return null;
   rayOrigin.set(x, RAY_HEIGHT, z);
   raycaster.set(rayOrigin, RAY_DOWN);
   const hits = raycaster.intersectObject(terrainRoot, true);
-  if (hits.length === 0) return null;
-
-  const hit = hits[0];
-  const normalY = hit.face?.normal.y ?? 1;
-
-  // If the surface is steep (cliff, tree, or bush)
-  if (normalY < MIN_GROUND_NORMAL_Y) {
-    // Try to "see through" small hollow objects like bushes by casting again from just below the hit.
-    rayOrigin.set(x, hit.point.y - 0.05, z);
-    raycaster.set(rayOrigin, RAY_DOWN);
-    const hits2 = raycaster.intersectObject(terrainRoot, true);
-    if (hits2.length > 0) {
-      const hit2 = hits2[0];
-      const normalY2 = hit2.face?.normal.y ?? 1;
-      
-      // If we found flat ground within 2.5 units below the steep hit, it was a bush!
-      // Return the flat ground so animals can walk through it.
-      if (normalY2 >= MIN_GROUND_NORMAL_Y && hit.point.y - hit2.point.y < 2.5) {
-        return {
-          y: hit2.point.y,
-          normalY: normalY2,
-          water: hit2.point.y <= WATER_LEVEL,
-        };
-      }
+  
+  // Find the highest flat surface (skipping steep tree canopies and anything too high)
+  for (const hit of hits) {
+    if (currentY !== undefined && hit.point.y - currentY > 1.5) continue;
+    
+    const normalY = hit.face?.normal.y ?? 1;
+    if (normalY >= MIN_GROUND_NORMAL_Y) {
+      return {
+        y: hit.point.y,
+        normalY,
+        water: hit.point.y <= WATER_LEVEL,
+      };
     }
   }
 
-  // Otherwise, return the original hit (valid ground or impenetrable mountain)
-  return {
-    y: hit.point.y,
-    normalY,
-    water: hit.point.y <= WATER_LEVEL,
-  };
+  // Fallback if no flat ground is found
+  for (const hit of hits) {
+    if (currentY !== undefined && hit.point.y - currentY > 1.5) continue;
+    return {
+      y: hit.point.y,
+      normalY: hit.face?.normal.y ?? 1,
+      water: hit.point.y <= WATER_LEVEL,
+    };
+  }
+  
+  return null;
 }
 
 // --- River banks -----------------------------------------------------------
