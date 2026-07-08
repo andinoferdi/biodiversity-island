@@ -8,7 +8,7 @@ import { PERCEPTION_SIZE, clamp01, encodedAngle, type PerceptionVector } from ".
 import { liveAnimals } from "./simulation";
 import { nearestWaterEdge, sampleGround, VEGETATION } from "./terrain";
 import { getSpecies, type Species } from "./species";
-import { FOOD_SPOTS, NEED_MAX, HUNT_HUNGER_THRESHOLD, KILL_RANGE, HEARING_RANGE } from "./simulation";
+import { FOOD_SPOTS, NEED_MAX, HUNT_HUNGER_THRESHOLD, HEARING_RANGE } from "./simulation";
 
 const MAX_SENSE_DIST = 20;
 
@@ -47,7 +47,8 @@ export function buildPerception(
 
   // [3-5] nearest food
   const isAquatic = species.locomotion === "aquatic";
-  const foodCandidates = FOOD_SPOTS.filter(s =>
+  // Predator tidak makan petak tanaman (lihat foodSpotsFor di animalDecision).
+  const foodCandidates = species.predatorOf?.length ? [] : FOOD_SPOTS.filter(s =>
     isAquatic ? s.biomeId === "river" : s.biomeId !== "river"
   );
   const foodRes = nearest2D(x, z, foodCandidates);
@@ -74,12 +75,12 @@ export function buildPerception(
   let nearestThreatDist = Infinity;
   let threatX = 0, threatZ = 0;
   let nearestPreyDist = Infinity;
-  let preyX = 0, preyZ = 0;
-  let friendsX = 0, friendsZ = 0, friendsCount = 0;
+  let friendsCount = 0;
 
   const isPredator = (species.predatorOf?.length ?? 0) > 0;
   const sightDist = species.sightDistance ?? 10;
   const fovHalf = (species.fov ?? 2.0) / 2;
+  const huntThreshold = species.huntHungerThreshold ?? HUNT_HUNGER_THRESHOLD;
 
   for (const [id, state] of liveAnimals.entries()) {
     if (id === selfId) continue;
@@ -107,14 +108,14 @@ export function buildPerception(
 
     // Is this animal my prey?
     if (isPredator && species.predatorOf!.includes(state.speciesId)) {
-      if (hunger > HUNT_HUNGER_THRESHOLD && dist < nearestPreyDist) {
-        nearestPreyDist = dist; preyX = state.x; preyZ = state.z;
+      if (hunger > huntThreshold && dist < nearestPreyDist) {
+        nearestPreyDist = dist;
       }
     }
 
     // Flocking — same species, within 5 units
     if (state.speciesId === species.id && dist < 5) {
-      friendsX += state.x; friendsZ += state.z; friendsCount++;
+      friendsCount++;
     }
   }
 
@@ -144,6 +145,10 @@ export function computeObstaclePush(
   ax: number, az: number,
   species: Species,
   stranded: boolean,
+  // Saat mencari minum, air BUKAN penghalang — tanpa ini hewan darat
+  // terkunci ~1 unit dari tepi sungai (di luar DRINK_RANGE 0.6) dan mati
+  // dehidrasi (bug kolaps lama yang sempat balik lagi di rewrite AI).
+  seekingWater = false,
 ): ObstaclePush {
   let ox = 0, oz = 0, str = 0;
   const LOOKAHEAD = 1.0;
@@ -170,7 +175,7 @@ export function computeObstaclePush(
     const cz = az + Math.cos(angle) * LOOKAHEAD;
     const g = sampleGround(cx, cz);
     const bad = !g || g.normalY < 0.6 ||
-      (g.water && species.locomotion === "terrestrial" && !stranded) ||
+      (g.water && species.locomotion === "terrestrial" && !stranded && !seekingWater) ||
       (!g.water && species.locomotion === "aquatic" && !stranded);
     if (bad) {
       ox -= Math.sin(angle) * CLIFF_PUSH;

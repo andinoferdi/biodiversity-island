@@ -1,17 +1,18 @@
 "use client";
 
-import { Suspense, useEffect, useMemo, useRef, useState } from "react";
+import { Suspense, useEffect, useMemo, useRef } from "react";
 import { useFrame, type ThreeEvent } from "@react-three/fiber";
 import { PerspectiveCamera } from "@react-three/drei";
 import { MathUtils, Vector3, type Group, type PerspectiveCamera as ThreePerspectiveCamera } from "three";
 import AnimalModel from "./AnimalModel";
-import { getSpecies, type AnimalSpawn, type Species } from "./species";
+import { type AnimalSpawn, type Species } from "./species";
 import { biomeForHeight } from "./biomes";
 import { nearestWaterEdge, sampleGround, VEGETATION } from "./terrain";
 import {
   DEATH_AFTER_CRITICAL, NEED_MAX, REPRODUCE_AFTER, REPRODUCTION_NEED_PENALTY,
   WELL_FED_LEVEL, WALK_RADIUS, liveAnimals, killRewards,
-  KILL_HUNGER_RESTORE, EAT_PREY_DURATION,
+  KILL_HUNGER_RESTORE, EAT_PREY_DURATION, HUNT_COOLDOWN, HUNT_GIVE_UP,
+  HUNT_GIVE_UP_COOLDOWN, PREDATOR_REPRODUCE_KILLS,
   type AnimalStatus, type AnimalVitals, type TimeScale,
 } from "./simulation";
 
@@ -119,7 +120,9 @@ export default function Animal({
     headingTarget: spawn.heading,
     visualHeading: spawn.heading,
     // AI cadence
-    aiTimer: Math.random() * AI_TICK_INTERVAL, // stagger per animal
+    // Stagger AI ticks per animal deterministically (no Math.random in render
+    // — repo rule + React Compiler purity).
+    aiTimer: (Math.abs(spawn.x * 7.31 + spawn.z * 13.17) % 1) * AI_TICK_INTERVAL,
     lastActionProbs: new Float32Array(5).fill(0.2) as PerceptionVector,
     lastPerception: new Float32Array(16) as PerceptionVector,
     currentSpeed: 0,
@@ -130,6 +133,9 @@ export default function Animal({
     criticalTimer: 0,
     wellFedTimer: 0,
     eatPreyTimer: 0,
+    huntCooldownTimer: 0,
+    huntTimer: 0,
+    killCount: 0,
     avoidanceTimer: 0,
     wanderTimer: 0,
     stuckTimer: 0,
@@ -182,7 +188,7 @@ export default function Animal({
       // ── Reproduction
       if (m.hunger < WELL_FED_LEVEL && m.thirst < WELL_FED_LEVEL) {
         m.wellFedTimer += dt;
-        if (m.wellFedTimer >= REPRODUCE_AFTER) {
+        if (m.wellFedTimer >= (species.reproduceAfter ?? REPRODUCE_AFTER)) {
           m.wellFedTimer = 0;
           m.hunger = Math.min(NEED_MAX, m.hunger + REPRODUCTION_NEED_PENALTY);
           m.thirst = Math.min(NEED_MAX, m.thirst + REPRODUCTION_NEED_PENALTY);
@@ -215,8 +221,18 @@ export default function Animal({
         killRewards.delete(spawn.id);
         m.hunger = Math.max(0, m.hunger - KILL_HUNGER_RESTORE * claimed);
         m.eatPreyTimer = EAT_PREY_DURATION;
+        m.huntCooldownTimer = HUNT_COOLDOWN;
+        // Predator beranak per PREDATOR_REPRODUCE_KILLS kill — lihat
+        // simulation.ts. Timer well-fed tidak pernah cukup untuk predator.
+        m.killCount += claimed;
+        if (m.killCount >= PREDATOR_REPRODUCE_KILLS) {
+          m.killCount = 0;
+          onReproduce(spawn, m.x, m.z, m.heading);
+        }
       }
       if (m.eatPreyTimer > 0) m.eatPreyTimer = Math.max(0, m.eatPreyTimer - dt);
+      if (m.huntCooldownTimer > 0)
+        m.huntCooldownTimer = Math.max(0, m.huntCooldownTimer - dt);
 
       // ────────────────────────────────────────────────────────────────────────
       // Manual control (selected animal)
@@ -300,12 +316,26 @@ export default function Animal({
             actionProbs: m.lastActionProbs,
             wanderTimer: m.wanderTimer,
             avoidanceTimer: m.avoidanceTimer,
+            huntCooldown: m.huntCooldownTimer,
             stranded,
             isRaining,
           });
 
           m.status = d.status;
-          
+
+          // Pengejaran yang gagal harus bisa berakhir: setelah HUNT_GIVE_UP
+          // detik-sim berburu tanpa kill, predator menyerah dan cooldown.
+          if (m.status === "Hunting") {
+            m.huntTimer += dt;
+            if (m.huntTimer >= HUNT_GIVE_UP) {
+              m.huntTimer = 0;
+              m.huntCooldownTimer = HUNT_GIVE_UP_COOLDOWN;
+            }
+          } else {
+            m.huntTimer = 0;
+          }
+
+
           // ── A* Pathfinding ──
           if (d.pathTarget && m.avoidanceTimer <= 0) {
             if (!m.activePath || Math.hypot(m.activePath.target.x - d.pathTarget.x, m.activePath.target.z - d.pathTarget.z) > 1.0) {
@@ -349,20 +379,27 @@ export default function Animal({
             // Stuck detection: if trying to move but blocked, increment stuckTimer
             let didMove = false;
 
-            // Self-rescue
+            // Self-rescue — tulis ke m.headingTarget: finalTarget di bawah
+            // membaca m.headingTarget, jadi menulis ke d.headingTarget di
+            // titik ini dibuang begitu saja (bug yang membuat hewan terjepit
+            // di rim WALK_RADIUS dan mati dehidrasi massal).
             if (stranded) {
               const edge = nearestWaterEdge(m.x, m.z);
-              if (edge) d.headingTarget = Math.atan2(edge.x - m.x, edge.z - m.z);
+              if (edge) m.headingTarget = Math.atan2(edge.x - m.x, edge.z - m.z);
             }
 
-            // Soft boundary: steer back toward centre
+            // Soft boundary: steer kembali ke tengah untuk SEMUA status gerak
+            // — semua sumber daya ada di tengah pulau.
             const effectiveRadius = species.roamRadius ?? WALK_RADIUS;
             const distFromCenter = Math.hypot(m.x, m.z);
-            if (!stranded && m.status === "Roaming" && distFromCenter > effectiveRadius * 0.85)
-              d.headingTarget = Math.atan2(-m.x, -m.z);
+            if (!stranded && distFromCenter > effectiveRadius * 0.85)
+              m.headingTarget = Math.atan2(-m.x, -m.z);
 
             // Obstacle push (terrain + vegetation)
-            const obs = computeObstaclePush(m.x, m.z, species, stranded);
+            const obs = computeObstaclePush(
+              m.x, m.z, species, stranded,
+              m.status === "Seeking water" || m.status === "Drinking",
+            );
             let finalTarget = m.headingTarget;
             if (obs.strength > 0) {
               const bx = Math.sin(m.headingTarget) * 0.4 + obs.x;
